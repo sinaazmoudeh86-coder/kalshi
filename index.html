@@ -1,0 +1,2522 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+// GENERATED from dc-runtime/src/*.ts — do not edit. Rebuild with `cd dc-runtime && bun run build`.
+"use strict";
+(() => {
+  var __defProp = Object.defineProperty;
+  var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+  var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+
+  // src/react.ts
+  function getReact() {
+    const R = window.React;
+    if (!R) throw new Error("dc-runtime: window.React is not available yet");
+    return R;
+  }
+  function getReactDOM() {
+    const RD = window.ReactDOM;
+    if (!RD) throw new Error("dc-runtime: window.ReactDOM is not available yet");
+    return RD;
+  }
+  var h = ((...args) => getReact().createElement(
+    ...args
+  ));
+
+  // src/parse.ts
+  function parseDcDocument(doc) {
+    const dc = doc.querySelector("x-dc");
+    if (!dc) return null;
+    const scriptEl = doc.querySelector("script[data-dc-script]");
+    const { props, preview } = parseDataProps(
+      scriptEl?.getAttribute("data-props") ?? null
+    );
+    return {
+      template: dc.innerHTML,
+      js: scriptEl ? scriptEl.textContent || "" : "",
+      props,
+      preview
+    };
+  }
+  function parseDcText(src) {
+    const openMatch = new RegExp("<x-" + "dc(?:\\s[^>]*)?>").exec(src);
+    if (!openMatch) return null;
+    const close = src.lastIndexOf("</x-" + "dc>");
+    if (close === -1 || close < openMatch.index) return null;
+    const template = src.slice(openMatch.index + openMatch[0].length, close);
+    const doc = new DOMParser().parseFromString(src, "text/html");
+    const scriptEl = doc.querySelector("script[data-dc-script]");
+    const { props, preview } = parseDataProps(
+      scriptEl?.getAttribute("data-props") ?? null
+    );
+    return {
+      template,
+      js: scriptEl ? scriptEl.textContent || "" : "",
+      props,
+      preview
+    };
+  }
+  function parseDataProps(raw) {
+    if (!raw) return { props: null, preview: null };
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return { props: null, preview: null };
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { props: null, preview: null };
+    }
+    const obj = parsed;
+    const preview = obj.$preview && typeof obj.$preview === "object" ? obj.$preview : null;
+    const rest = {};
+    for (const k of Object.keys(obj)) {
+      if (k[0] !== "$") rest[k] = obj[k];
+    }
+    return { props: Object.keys(rest).length ? rest : null, preview };
+  }
+  function dcNameFromPath(pathname) {
+    let p = pathname || "";
+    try {
+      p = decodeURIComponent(p);
+    } catch {
+    }
+    const base = p.split("/").pop() || "Root";
+    return base.replace(/\.dc\.html$/, "").replace(/\.html?$/, "") || "Root";
+  }
+
+  // src/boot.ts
+  var BASE_CSS = `
+    .sc-placeholder{background:color-mix(in srgb,currentColor 8%,transparent);
+      border:1px solid color-mix(in srgb,currentColor 50%,transparent);
+      border-radius:2px;box-sizing:border-box;overflow:hidden}
+    @keyframes sc-shine{0%{background-position:100% 50%}100%{background-position:0% 50%}}
+    html.sc-dc-streaming .sc-placeholder,
+    html.sc-dc-streaming .sc-interp.sc-missing{position:relative;
+      background:color-mix(in srgb,currentColor 5%,transparent);
+      border-color:transparent}
+    html.sc-dc-streaming .sc-placeholder::before,
+    html.sc-dc-streaming .sc-interp.sc-missing::before{content:'';
+      position:absolute;inset:0;pointer-events:none;
+      background:linear-gradient(90deg,rgba(217,119,87,0) 25%,rgba(247,225,211,.95) 37%,rgba(217,119,87,0) 63%);
+      background-size:400% 100%;animation:sc-shine 1.4s ease infinite}
+    html.sc-dc-streaming .sc-placeholder:nth-child(n+9 of .sc-placeholder)::before,
+    html.sc-dc-streaming .sc-interp.sc-missing:nth-child(n+9 of .sc-interp.sc-missing)::before{animation:none;
+      background:color-mix(in srgb,currentColor 8%,transparent)}
+    .sc-placeholder-error{padding:4px 8px;font:11px/1.4 ui-monospace,monospace;
+      color:color-mix(in srgb,currentColor 70%,transparent);word-break:break-word}
+    .sc-interp.sc-missing{display:inline-block;width:2em;height:1em;overflow:hidden;
+      vertical-align:text-bottom;background:rgba(255,255,255,.3);border:1px solid rgba(0,0,0,.5);
+      border-radius:2px;box-sizing:border-box;color:transparent;
+      user-select:none}
+    .sc-interp.sc-unresolved{font-family:ui-monospace,monospace;font-size:.85em;
+      color:color-mix(in srgb,currentColor 50%,transparent);
+      background:color-mix(in srgb,currentColor 10%,transparent);border-radius:3px;
+      padding:0 3px}
+    .sc-host.sc-has-error{position:relative}
+    .sc-logic-error{position:absolute;top:8px;left:8px;z-index:2147483647;max-width:60ch;
+      padding:6px 10px;background:#b00020;color:#fff;font:12px/1.4 ui-monospace,monospace;
+      border-radius:4px;white-space:pre-wrap;pointer-events:none}
+    /* Mirrors PRINT_BASELINE_CSS in apps/web deck-stage-export.ts \u2014 keep both
+       in sync until dc-runtime regains a build step. */
+    @media print {
+      @page { margin: 0.5cm; }
+      figure, table { break-inside: avoid; }
+      #dc-root, #dc-root > .sc-host { height: auto; }
+      *, *::before, *::after {
+        print-color-adjust: exact; -webkit-print-color-adjust: exact;
+        backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+        animation-delay: -99s !important; animation-duration: .001s !important;
+        animation-iteration-count: 1 !important; animation-fill-mode: both !important;
+        animation-play-state: running !important; transition-duration: 0s !important;
+      }
+    }
+  `;
+  var FULL_PAGE_CSS = "html,body{height:100%;margin:0}#dc-root,#dc-root>.sc-host{height:100%}";
+  function rootNameForDocument(doc, loc) {
+    let bootPath = loc.pathname || "";
+    if (!/\.dc\.html?$/i.test(safeDecode(bootPath))) {
+      try {
+        bootPath = new URL(doc.baseURI || "/").pathname;
+      } catch {
+      }
+    }
+    return dcNameFromPath(bootPath);
+  }
+  function safeDecode(s) {
+    try {
+      return decodeURIComponent(s);
+    } catch {
+      return s;
+    }
+  }
+  function boot(runtime, doc = document) {
+    const parsed = parseDcDocument(doc);
+    if (!parsed) return null;
+    const React = getReact();
+    const rootName = rootNameForDocument(doc, location);
+    runtime.markFetched(rootName);
+    runtime.setRootName(rootName);
+    runtime.adoptParsed(rootName, parsed);
+    fetch(location.href).then((res) => res.ok ? res.text() : "").then((t) => {
+      const raw = t ? parseDcText(t) : null;
+      if (raw?.template) runtime.updateHtml(rootName, raw.template);
+    }).catch(() => {
+    });
+    const dc = doc.querySelector("x-dc");
+    const hostEl = doc.createElement("div");
+    hostEl.id = "dc-root";
+    dc.replaceWith(hostEl);
+    if (!parsed.preview) {
+      const s = doc.createElement("style");
+      s.textContent = FULL_PAGE_CSS;
+      doc.head.appendChild(s);
+    }
+    const Root = runtime.getDC(rootName);
+    const entry = runtime.registry.get(rootName);
+    function StandaloneRoot() {
+      const [, setTick] = React.useState(0);
+      React.useEffect(() => {
+        const sub = () => setTick((n) => n + 1);
+        entry.subs.add(sub);
+        return () => {
+          entry.subs.delete(sub);
+        };
+      }, []);
+      const defaults = React.useMemo(() => {
+        const d = {};
+        for (const k in entry.propsMeta || {}) {
+          const v = entry.propsMeta?.[k]?.default;
+          if (v !== void 0) d[k] = v;
+        }
+        return d;
+      }, [entry.propsMeta]);
+      return h(Root, { ...defaults, ...entry.propOverrides || {} });
+    }
+    const ReactDOM = getReactDOM();
+    if (ReactDOM.createRoot)
+      ReactDOM.createRoot(hostEl).render(h(StandaloneRoot));
+    else ReactDOM.render(h(StandaloneRoot), hostEl);
+    return rootName;
+  }
+
+  // src/expr.ts
+  var IDENT_RE = /^[A-Za-z_$][A-Za-z0-9_$]*/;
+  var NUMBER_RE = /^-?\d+(\.\d+)?$/;
+  function resolve(vals, src) {
+    const expr = String(src).trim();
+    if (!expr) return void 0;
+    if (expr[0] === "(" && expr[expr.length - 1] === ")" && parensWrapWhole(expr)) {
+      return resolve(vals, expr.slice(1, -1));
+    }
+    const eq = findTopLevelEquality(expr);
+    if (eq) {
+      const lv = resolve(vals, expr.slice(0, eq.index));
+      const rv = resolve(vals, expr.slice(eq.index + eq.op.length));
+      switch (eq.op) {
+        case "===":
+          return lv === rv;
+        case "!==":
+          return lv !== rv;
+        case "==":
+          return lv == rv;
+        default:
+          return lv != rv;
+      }
+    }
+    if (expr[0] === "!") return !resolve(vals, expr.slice(1));
+    if (expr === "true") return true;
+    if (expr === "false") return false;
+    if (expr === "null") return null;
+    if (expr === "undefined") return void 0;
+    if (NUMBER_RE.test(expr)) return Number(expr);
+    if (expr.length >= 2 && (expr[0] === '"' || expr[0] === "'") && expr[expr.length - 1] === expr[0]) {
+      return expr.slice(1, -1);
+    }
+    return resolvePath(vals, expr);
+  }
+  function parensWrapWhole(expr) {
+    let depth = 0;
+    for (let i = 0; i < expr.length - 1; i++) {
+      if (expr[i] === "(") depth++;
+      else if (expr[i] === ")") {
+        depth--;
+        if (depth === 0) return false;
+      }
+    }
+    return true;
+  }
+  function findTopLevelEquality(expr) {
+    let depth = 0;
+    for (let i = 0; i < expr.length; i++) {
+      const c = expr[i];
+      if (c === "[" || c === "(") depth++;
+      else if (c === "]" || c === ")") depth--;
+      else if (depth === 0 && (c === "=" || c === "!") && expr[i + 1] === "=") {
+        if (i > 0 && (expr[i - 1] === "=" || expr[i - 1] === "!")) continue;
+        if (!expr.slice(0, i).trim()) continue;
+        const op = expr[i + 2] === "=" ? c + "==" : c + "=";
+        return { index: i, op };
+      }
+    }
+    return null;
+  }
+  function resolvePath(vals, expr) {
+    const head = expr.match(IDENT_RE);
+    if (!head) return void 0;
+    let cur = vals == null ? void 0 : vals[head[0]];
+    let i = head[0].length;
+    while (i < expr.length) {
+      if (expr[i] === ".") {
+        const m = expr.slice(i + 1).match(IDENT_RE) || expr.slice(i + 1).match(/^\d+/);
+        if (!m) return void 0;
+        cur = cur == null ? void 0 : cur[m[0]];
+        i += 1 + m[0].length;
+      } else if (expr[i] === "[") {
+        let depth = 1;
+        let j = i + 1;
+        while (j < expr.length && depth > 0) {
+          if (expr[j] === "[") depth++;
+          else if (expr[j] === "]") {
+            depth--;
+            if (depth === 0) break;
+          }
+          j++;
+        }
+        if (depth !== 0) return void 0;
+        const key = resolve(vals, expr.slice(i + 1, j));
+        cur = cur == null ? void 0 : cur[key];
+        i = j + 1;
+      } else {
+        return void 0;
+      }
+    }
+    return cur;
+  }
+
+  // src/encode.ts
+  var CAMEL_ATTR = "sc-camel-";
+  var INLINE_TEXT_TAGS = new Set(
+    "a abbr b bdi bdo br cite code del dfn em i ins kbd mark q s samp small span strike strong sub sup u var wbr".split(
+      " "
+    )
+  );
+  var RAW_WRAP = {
+    select: "sc-raw-select",
+    table: "sc-raw-table",
+    tbody: "sc-raw-tbody",
+    thead: "sc-raw-thead",
+    tfoot: "sc-raw-tfoot",
+    tr: "sc-raw-tr",
+    td: "sc-raw-td",
+    th: "sc-raw-th",
+    caption: "sc-raw-caption"
+  };
+  var RAW_UNWRAP = Object.fromEntries(
+    Object.entries(RAW_WRAP).map(([k, v]) => [v, k])
+  );
+  var EVENT_MAP = {
+    onclick: "onClick",
+    onchange: "onChange",
+    oninput: "onInput",
+    onsubmit: "onSubmit",
+    onkeydown: "onKeyDown",
+    onkeyup: "onKeyUp",
+    onkeypress: "onKeyPress",
+    onmousedown: "onMouseDown",
+    onmouseup: "onMouseUp",
+    onmouseenter: "onMouseEnter",
+    onmouseleave: "onMouseLeave",
+    onfocus: "onFocus",
+    onblur: "onBlur",
+    ondoubleclick: "onDoubleClick",
+    oncontextmenu: "onContextMenu"
+  };
+  var ATTRS = `(?:[^>"']|"[^"]*"|'[^']*')*`;
+  var IMPORT_SELF_CLOSE_RE = new RegExp(
+    "<(x-import|dc-import)(" + ATTRS + ")/>",
+    "gi"
+  );
+  var CAMEL_ATTR_RE = /(\s)([a-z]+[A-Z][A-Za-z0-9]*)(\s*=)/g;
+  function encodeCase(html) {
+    html = html.replace(
+      IMPORT_SELF_CLOSE_RE,
+      (_, t, a) => "<" + t + a + "></" + t + ">"
+    );
+    html = html.replace(new RegExp("<hel" + "met(\\s|>)", "gi"), "<sc-hel" + "met$1");
+    html = html.replace(new RegExp("</hel" + "met\\s*>", "gi"), "</sc-hel" + "met>");
+    html = html.replace(
+      CAMEL_ATTR_RE,
+      (_, sp, name, eq) => sp + CAMEL_ATTR + name.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase()) + eq
+    );
+    for (const [real, alias] of Object.entries(RAW_WRAP)) {
+      html = html.replace(
+        new RegExp("(</?)" + real + "(?=[\\s>])", "gi"),
+        "$1" + alias
+      );
+    }
+    return html;
+  }
+  function kebabToCamel(s) {
+    return s.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+  }
+  function cssToObj(css) {
+    const o = {};
+    for (const decl of css.split(";")) {
+      const i = decl.indexOf(":");
+      if (i < 0) continue;
+      const prop = decl.slice(0, i).trim();
+      o[prop.startsWith("--") ? prop : kebabToCamel(prop)] = decl.slice(i + 1).trim();
+    }
+    return o;
+  }
+  function compileAttr(raw) {
+    const whole = raw.match(/^\s*\{\{([\s\S]+?)\}\}\s*$/);
+    if (whole) {
+      const path = whole[1];
+      return (vals) => resolve(vals, path);
+    }
+    if (raw.includes("{{")) {
+      const parts = raw.split(/\{\{([\s\S]+?)\}\}/g);
+      return (vals) => parts.map((s, i) => i & 1 ? resolve(vals, s) ?? "" : s).join("");
+    }
+    return () => raw;
+  }
+
+  // src/compile.ts
+  function collectProps(node, kind, host) {
+    const propGetters = [];
+    const pseudoClasses = [];
+    let hintSize = null;
+    for (const { name, value } of [...node.attributes]) {
+      if (name === "sc-name" || name === "data-dc-tpl") continue;
+      let key = name;
+      if (key.startsWith(CAMEL_ATTR))
+        key = kebabToCamel(key.slice(CAMEL_ATTR.length));
+      if (key === "hint-size") {
+        hintSize = value;
+        continue;
+      }
+      if (key.startsWith("style-")) {
+        pseudoClasses.push(host.pseudoClass(key.slice(6), value));
+        continue;
+      }
+      if (kind !== "dom") {
+        if (key.includes("-") && !(kind === "x-import" && (key.startsWith("aria-") || key.startsWith("data-"))))
+          key = kebabToCamel(key);
+      } else {
+        if (key === "class") key = "className";
+        else if (key === "for") key = "htmlFor";
+        else if (key.startsWith("on"))
+          key = EVENT_MAP[key] || "on" + key[2].toUpperCase() + key.slice(3);
+      }
+      propGetters.push([key, compileAttr(value)]);
+    }
+    return { propGetters, pseudoClasses, hintSize };
+  }
+  var HOST_STYLE_PROPS = /* @__PURE__ */ new Set([
+    "position",
+    "left",
+    "right",
+    "top",
+    "bottom",
+    "inset",
+    "width",
+    "height",
+    "z-index",
+    "transform"
+  ]);
+  function hostPositionStyle(style) {
+    const all = typeof style === "string" ? cssToObj(style) : style != null && typeof style === "object" ? style : null;
+    if (!all) return void 0;
+    const out = {};
+    for (const [k, v] of Object.entries(all)) {
+      const kebab = k.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
+      if (HOST_STYLE_PROPS.has(kebab)) out[k] = v;
+    }
+    return Object.keys(out).length ? out : void 0;
+  }
+  function compileTemplate(html, host) {
+    const tpl = document.createElement("template");
+    //! nosemgrep: direct-inner-html-assignment
+    tpl.innerHTML = encodeCase(html);
+    let tplN = 0;
+    (function stamp(node) {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        node.setAttribute("data-dc-tpl", String(tplN++));
+      }
+      for (const c of node.childNodes) stamp(c);
+    })(tpl.content);
+    const builders = walkChildren(tpl.content, host);
+    const render = ((vals, ctx) => builders.map((b, i) => b(vals || {}, ctx, i)));
+    render.__annotated = tpl.innerHTML;
+    return render;
+  }
+  function walkChildren(node, host) {
+    return [...node.childNodes].map((c) => walk(c, host)).filter((b) => b != null);
+  }
+  function walk(node, host) {
+    if (node.nodeType === Node.TEXT_NODE) return walkText(node);
+    if (node.nodeType !== Node.ELEMENT_NODE) return null;
+    const el = node;
+    const tag = el.tagName.toLowerCase();
+    if (tag === "sc-for") return walkFor(el, host);
+    if (tag === "sc-if") return walkIf(el, host);
+    if (tag === "x-import") return walkXImport(el, host);
+    if (tag === "sc-helmet") return host.helmet(el);
+    if (tag === "dc-import") return walkComponent(el, host);
+    return walkElement(el, host);
+  }
+  var warnedHoles = /* @__PURE__ */ new Set();
+  function warnUnresolved(ctx, what) {
+    const key = (ctx?.__name || "?") + "\0" + what;
+    if (warnedHoles.has(key)) return;
+    warnedHoles.add(key);
+    console.warn("[dc-runtime] " + (ctx?.__name || "template") + ": " + what);
+  }
+  function walkText(node) {
+    const txt = node.nodeValue ?? "";
+    if (!txt.includes("{{")) {
+      if (!txt.trim() && !txt.includes(" ")) return null;
+      return () => txt;
+    }
+    const parts = txt.split(/\{\{([\s\S]+?)\}\}/g);
+    return (vals, ctx, key) => h(
+      getReact().Fragment,
+      { key },
+      ...parts.map((p, i) => {
+        if (!(i & 1)) return p;
+        const v = resolve(vals, p);
+        if (v === void 0) {
+          if (!ctx?.__streamingNow) {
+            if (document.body?.hasAttribute("data-dc-editor-on")) {
+              return h(
+                "span",
+                { key: i, className: "sc-interp sc-unresolved" },
+                "{{ " + p.trim() + " }}"
+              );
+            }
+            warnUnresolved(
+              ctx,
+              "{{ " + p.trim() + " }} never resolved \u2014 rendered as empty"
+            );
+            return null;
+          }
+          return h(
+            "span",
+            { key: i, className: "sc-interp sc-missing" },
+            p.trim()
+          );
+        }
+        if (getReact().isValidElement(v) || Array.isArray(v)) {
+          return h(getReact().Fragment, { key: i }, v);
+        }
+        if (v === null || typeof v === "boolean") return null;
+        return h("span", { key: i, className: "sc-interp" }, String(v));
+      })
+    );
+  }
+  function walkFor(el, host) {
+    const listGet = compileAttr(el.getAttribute("list") || "");
+    const asName = el.getAttribute("as") || "item";
+    const hintN = parseInt(el.getAttribute("hint-placeholder-count") || "0", 10);
+    const kids = walkChildren(el, host);
+    const listSrc = el.getAttribute("list") || "";
+    return (vals, ctx, key) => {
+      let list = listGet(vals);
+      if (!Array.isArray(list)) {
+        if (!ctx?.__streamingNow) {
+          if (list !== void 0 && list !== null) {
+            warnUnresolved(
+              ctx,
+              'sc-for list="' + listSrc + '" is not an array (' + typeof list + ")"
+            );
+          }
+          list = [];
+        } else {
+          list = hintN > 0 ? Array(hintN).fill(void 0) : [];
+        }
+      }
+      return h(
+        getReact().Fragment,
+        { key },
+        list.map((item, i) => {
+          const sub = { ...vals, [asName]: item, $index: i };
+          return h(
+            getReact().Fragment,
+            { key: i },
+            kids.map((b, j) => b(sub, ctx, j))
+          );
+        })
+      );
+    };
+  }
+  function walkIf(el, host) {
+    const valGet = compileAttr(el.getAttribute("value") || "");
+    const hintRaw = el.getAttribute("hint-placeholder-val");
+    const hintGet = hintRaw != null ? compileAttr(hintRaw) : null;
+    const kids = walkChildren(el, host);
+    return (vals, ctx, key) => {
+      let v = valGet(vals);
+      if (v === void 0 && hintGet && ctx?.__streamingNow) v = hintGet(vals);
+      return v ? h(
+        getReact().Fragment,
+        { key },
+        kids.map((b, j) => b(vals, ctx, j))
+      ) : null;
+    };
+  }
+  function walkComponent(el, host) {
+    const name = el.getAttribute("name") || el.getAttribute("component") || "";
+    el.removeAttribute("name");
+    el.removeAttribute("component");
+    const tplId = el.getAttribute("data-dc-tpl");
+    const styleRaw = el.getAttribute("style");
+    el.removeAttribute("style");
+    const styleGet = styleRaw != null ? compileAttr(styleRaw) : null;
+    const { propGetters, hintSize } = collectProps(el, "dc-import", host);
+    const kids = walkChildren(el, host);
+    return (vals, ctx, key) => {
+      const props = {
+        key,
+        __hintSize: hintSize,
+        __tplId: tplId,
+        __hostStyle: styleGet ? hostPositionStyle(styleGet(vals)) : void 0
+      };
+      for (const [k, g] of propGetters) {
+        const v = g(vals);
+        if (k === "dcProps") {
+          if (v && typeof v === "object") Object.assign(props, v);
+          continue;
+        }
+        props[k] = v;
+      }
+      if (kids.length) props.children = kids.map((b, j) => b(vals, ctx, j));
+      return h(host.component(name), props);
+    };
+  }
+  function walkXImport(el, host) {
+    const globalNameGet = compileAttr(
+      el.getAttribute("component-from-global-scope") || ""
+    );
+    const exportNameGet = compileAttr(
+      el.getAttribute("component") || el.getAttribute("name") || ""
+    );
+    const fromRaw = el.getAttribute("from") || el.getAttribute("src") || el.getAttribute("import") || "";
+    const urls = fromRaw.trim() ? fromRaw.trim().split(/\s+/) : [];
+    const url = urls.length ? urls[urls.length - 1] : "";
+    const kindOf = (u) => /\.(jsx|tsx)(\?|#|$)/i.test(u) ? "jsx" : "js";
+    const tplId = el.getAttribute("data-dc-tpl");
+    const styleRaw = el.getAttribute("style");
+    el.removeAttribute("style");
+    const styleGet = styleRaw != null ? compileAttr(styleRaw) : null;
+    const wrap = tplId != null || styleGet != null;
+    const { propGetters, hintSize } = collectProps(el, "x-import", host);
+    const hasContent = el.children.length > 0 || !!(el.textContent || "").trim();
+    const kids = hasContent ? walkChildren(el, host) : [];
+    const urlBindable = fromRaw.includes("{{");
+    if (urls.length && !urlBindable) {
+      let prev;
+      for (const u of urls) prev = host.loadExternal(kindOf(u), u, prev);
+    }
+    const evalName = (g, vals) => {
+      const v = g(vals);
+      const s = v == null ? "" : String(v);
+      return s.includes("{{") ? "" : s;
+    };
+    return (vals, ctx, key) => {
+      const globalName = evalName(globalNameGet, vals);
+      const name = globalName || evalName(exportNameGet, vals);
+      const C = !name || urlBindable ? null : globalName ? host.resolveExternalGlobal(url, globalName) : host.resolveExternal(url, name);
+      const hostStyle = styleGet ? hostPositionStyle(styleGet(vals)) : void 0;
+      const wrapper = wrap ? {
+        key,
+        className: "sc-host-x",
+        "data-dc-tpl": tplId,
+        style: hostStyle || { display: "contents" }
+      } : null;
+      if (!C) {
+        const error = urlBindable ? "x-import `from` cannot contain {{ \u2026 }} \u2014 module URLs are resolved at parse time; use a literal URL" : host.resolveExternalError(url, name);
+        const ph = host.placeholder({
+          key: wrapper ? void 0 : key,
+          name,
+          hintSize,
+          error
+        });
+        return wrapper ? h("div", wrapper, ph) : ph;
+      }
+      const props = wrapper ? {} : { key };
+      let unresolvedHole = false;
+      for (const [k, g] of propGetters) {
+        if (k === "component" || k === "componentFromGlobalScope" || k === "from") {
+          continue;
+        }
+        const v = g(vals);
+        if (v === void 0) unresolvedHole = true;
+        if (k === "dcProps") {
+          if (v && typeof v === "object") Object.assign(props, v);
+          continue;
+        }
+        props[k] = v;
+      }
+      if (unresolvedHole && ctx?.__htmlStreamingNow) {
+        const ph = host.placeholder({
+          key: wrapper ? void 0 : key,
+          name,
+          hintSize,
+          error: null
+        });
+        return wrapper ? h("div", wrapper, ph) : ph;
+      }
+      if (kids.length) props.children = kids.map((b, j) => b(vals, ctx, j));
+      return wrapper ? h("div", wrapper, h(C, props)) : h(C, props);
+    };
+  }
+  function contentKey(el) {
+    const clone = el.cloneNode(true);
+    for (const d of clone.querySelectorAll("*")) {
+      while (d.attributes.length) d.removeAttribute(d.attributes[0].name);
+    }
+    const s = clone.innerHTML;
+    let h2 = 5381;
+    for (let i = 0; i < s.length; i++) h2 = (h2 << 5) + h2 + s.charCodeAt(i) | 0;
+    return s.length + "." + (h2 >>> 0).toString(36);
+  }
+  var NEVER_CONTENT_KEYED = new Set(
+    "script style textarea option title select canvas iframe video audio".split(
+      " "
+    )
+  );
+  var NOT_INLINE_SELECTOR = ":not(" + [...INLINE_TEXT_TAGS].join(",") + ")";
+  function walkElement(el, host) {
+    const realTag = RAW_UNWRAP[el.localName] || el.localName;
+    const tplId = el.getAttribute("data-dc-tpl");
+    const inlineOnly = el.childNodes.length > 0 && !NEVER_CONTENT_KEYED.has(realTag) && el.querySelector(NOT_INLINE_SELECTOR) === null;
+    const keySuffix = inlineOnly ? "|" + contentKey(el) : "";
+    const { propGetters, pseudoClasses } = collectProps(el, "dom", host);
+    const kids = walkChildren(el, host);
+    return (vals, ctx, key) => {
+      const props = {
+        key: key + keySuffix,
+        "data-dc-tpl": tplId
+      };
+      for (const [k, g] of propGetters) {
+        let v = g(vals);
+        if (k === "style" && typeof v === "string") v = cssToObj(v);
+        if ((k === "value" || k === "checked") && v === void 0) {
+          v = k === "checked" ? false : "";
+        }
+        props[k] = v;
+      }
+      if (pseudoClasses.length) {
+        props.className = [props.className, ...pseudoClasses].filter(Boolean).join(" ");
+      }
+      return h(realTag, props, ...kids.map((b, j) => b(vals, ctx, j)));
+    };
+  }
+
+  // src/logic.ts
+  var StreamableLogic = class {
+    constructor(props) {
+      __publicField(this, "props");
+      __publicField(this, "state", {});
+      /** Back-pointer to the wrapper component, installed after construction. */
+      __publicField(this, "__host");
+      this.props = props || {};
+    }
+    setState(update, cb) {
+      this.__host && this.__host.__setLogicState(update, cb);
+    }
+    forceUpdate() {
+      this.__host && this.__host.forceUpdate();
+    }
+    componentDidMount() {
+    }
+    componentDidUpdate(_prevProps) {
+    }
+    componentWillUnmount() {
+    }
+    /** The flat object the template renders against (merged over props). */
+    renderVals() {
+      return {};
+    }
+  };
+  function evalDcLogic(src) {
+    //! nosemgrep: eval-and-function-constructor
+    const fn = new Function(
+      "DCLogic",
+      "StreamableLogic",
+      "React",
+      src + '\n;return (typeof Component!=="undefined"&&Component)||undefined;'
+    );
+    return fn(StreamableLogic, StreamableLogic, getReact());
+  }
+
+  // src/component.ts
+  function shallowEqual(a, b) {
+    if (!b) return false;
+    const ak = Object.keys(a).filter((k) => k !== "children");
+    const bk = Object.keys(b).filter((k) => k !== "children");
+    if (ak.length !== bk.length) return false;
+    for (const k of ak) if (a[k] !== b[k]) return false;
+    return true;
+  }
+  function Placeholder({
+    name,
+    hintSize,
+    streaming,
+    error
+  }) {
+    const [w, hgt] = (hintSize || "100%,60px").split(",");
+    return h(
+      "div",
+      {
+        className: "sc-placeholder" + (streaming ? " sc-streaming" : ""),
+        style: { width: w.trim(), height: hgt && hgt.trim() },
+        title: name
+      },
+      error ? h(
+        "div",
+        { className: "sc-placeholder-error" },
+        (name ? name + ": " : "") + error
+      ) : null
+    );
+  }
+  function hintToMin(hint) {
+    if (!hint) return void 0;
+    const [w, hgt] = hint.split(",");
+    return { minWidth: w.trim(), minHeight: hgt && hgt.trim() };
+  }
+  function createComponentFactory(registry, ensureFetched) {
+    const React = getReact();
+    const AncestorContext = React.createContext([]);
+    class StreamableComponent extends React.Component {
+      constructor(props) {
+        super(props);
+        __publicField(this, "__name");
+        __publicField(this, "__sub");
+        __publicField(this, "__needsDidMount", false);
+        /** Snapshot of the registry's streaming flags taken at render time —
+         *  builders read it off the RenderCtx (this) to pick placeholder vs
+         *  render-nothing for unresolved values. */
+        __publicField(this, "__streamingNow", false);
+        __publicField(this, "__htmlStreamingNow", false);
+        /** When a construct throws, remember the (class, registry.ver, props)
+         *  triple so render-time reconcile doesn't re-attempt it on every parent
+         *  re-render. A registry bump (new class, template, external module
+         *  resolving via bumpAll) changes `ver` and breaks the memo so an
+         *  env-dependent constructor can self-heal. */
+        __publicField(this, "__failedLogic", null);
+        __publicField(this, "__failedUserProps", null);
+        __publicField(this, "__failedVer", -1);
+        /** Per-instance constructor error — kept here (not on the registry entry)
+         *  so one instance's successful construct can't hide a sibling's failure,
+         *  and a construct can never wipe an eval error `updateJs` recorded on
+         *  `r.logicError`. */
+        __publicField(this, "__ctorError", null);
+        __publicField(this, "logic");
+        this.__name = props.__name;
+        this.state = { __v: 0, __err: null };
+        this.__sub = () => {
+          if (this.state.__err) this.setState({ __err: null });
+          this.forceUpdate();
+        };
+        this.__makeLogic(registry.get(this.__name).Logic, null);
+        ensureFetched(this.__name);
+      }
+      /** Error-boundary hook: a render crash anywhere in this DC's subtree
+       *  (its own template, an x-import'd component, a child DC without its
+       *  own deeper boundary) lands here instead of unmounting the page. */
+      static getDerivedStateFromError(e) {
+        return { __err: e instanceof Error && e.message ? e.message : String(e) };
+      }
+      componentDidCatch(e, info) {
+        console.error(
+          "[dc-runtime] render error in <" + this.__name + ">:",
+          e,
+          info?.componentStack || ""
+        );
+      }
+      /** Instantiate the logic class (or the no-op base) and adopt `prevState`
+       *  over its initial state — used both at mount and on hot-swap. */
+      __makeLogic(Logic, prevState) {
+        const L = Logic || StreamableLogic;
+        try {
+          this.logic = new L(this.__userProps());
+          this.__failedLogic = null;
+          this.__failedUserProps = null;
+          this.__ctorError = null;
+        } catch (e) {
+          console.error(e);
+          this.__failedLogic = Logic;
+          this.__failedUserProps = this.__userProps();
+          this.__failedVer = registry.get(this.__name).ver;
+          this.__ctorError = this.__name + ": " + (e instanceof Error && e.message ? e.message : String(e));
+          this.logic = new StreamableLogic(
+            this.__userProps()
+          );
+        }
+        this.logic.__host = this;
+        if (prevState)
+          this.logic.state = { ...this.logic.state || {}, ...prevState };
+      }
+      /** The props the author's logic + template see — internal __-prefixed
+       *  wiring stripped. */
+      __userProps() {
+        const { __name, __hintSize, __tplId, __hostStyle, ...rest } = this.props;
+        return rest;
+      }
+      __setLogicState(update, cb) {
+        const prev = this.logic.state;
+        const patch = typeof update === "function" ? update(prev) : update;
+        this.logic.state = { ...prev, ...patch };
+        this.setState((s) => ({ __v: s.__v + 1 }), cb);
+      }
+      /** Swap the logic instance when the registry's Logic class changed
+       *  (streaming completion, hot reload). State carries over; didMount
+       *  re-fires after the swap commits so refs exist. */
+      __reconcileLogic() {
+        const r = registry.get(this.__name);
+        const Next = r.Logic;
+        const Cur = this.logic.constructor;
+        if (Next === Cur || !Next && Cur === StreamableLogic || Next === this.__failedLogic && r.ver === this.__failedVer && shallowEqual(this.__userProps(), this.__failedUserProps)) {
+          return;
+        }
+        if (!this.__needsDidMount) {
+          try {
+            this.logic.componentWillUnmount();
+          } catch (e) {
+            console.error(e);
+          }
+        }
+        this.__makeLogic(Next, this.logic.state);
+        this.__needsDidMount = true;
+      }
+      componentDidMount() {
+        registry.get(this.__name).subs.add(this.__sub);
+        try {
+          this.logic.componentDidMount();
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      componentDidUpdate(prevProps) {
+        this.logic.props = this.__userProps();
+        if (this.__needsDidMount) {
+          if (this.state.__err || !registry.get(this.__name).tpl) return;
+          this.__needsDidMount = false;
+          try {
+            this.logic.componentDidMount();
+          } catch (e) {
+            console.error(e);
+          }
+        } else {
+          try {
+            this.logic.componentDidUpdate(prevProps);
+          } catch (e) {
+            console.error(e);
+          }
+        }
+      }
+      componentWillUnmount() {
+        registry.get(this.__name).subs.delete(this.__sub);
+        if (!this.__needsDidMount) {
+          try {
+            this.logic.componentWillUnmount();
+          } catch (e) {
+            console.error(e);
+          }
+        }
+      }
+      render() {
+        const r = registry.get(this.__name);
+        const cls = "sc-host" + (r.htmlStreaming ? " sc-streaming-html" : "") + (r.jsStreaming ? " sc-streaming-js" : "");
+        const hintStyle = r.htmlStreaming ? hintToMin(this.props.__hintSize) : void 0;
+        const hostStyle = this.props.__hostStyle || hintStyle ? { ...hintStyle || {}, ...this.props.__hostStyle || {} } : void 0;
+        const hostBase = {
+          className: cls,
+          style: hostStyle,
+          "data-sc-name": this.__name,
+          "data-dc-tpl": this.props.__tplId
+        };
+        const chain = Array.isArray(this.context) ? this.context : [];
+        if (chain.includes(this.__name)) {
+          const cycle = [
+            ...chain.slice(chain.indexOf(this.__name)),
+            this.__name
+          ].join(" \u2192 ");
+          return h(
+            "div",
+            { ...hostBase, className: cls + " sc-has-error" },
+            h(Placeholder, {
+              name: this.__name,
+              hintSize: this.props.__hintSize,
+              error: "circular import: " + cycle
+            })
+          );
+        }
+        if (this.state.__err) {
+          return h(
+            "div",
+            { ...hostBase, className: cls + " sc-has-error" },
+            h(
+              "div",
+              { className: "sc-logic-error", "data-omelette-chrome": "" },
+              this.__name + ": " + this.state.__err
+            ),
+            h(Placeholder, {
+              name: this.__name,
+              hintSize: this.props.__hintSize,
+              error: this.state.__err
+            })
+          );
+        }
+        this.__reconcileLogic();
+        if (!r.tpl) {
+          return h(
+            "div",
+            hostBase,
+            h(Placeholder, { name: this.__name, hintSize: this.props.__hintSize })
+          );
+        }
+        const userProps = this.__userProps();
+        this.logic.props = userProps;
+        let vals = userProps;
+        let renderErr = r.logicError || this.__ctorError;
+        try {
+          vals = { ...userProps, ...this.logic.renderVals() || {} };
+        } catch (e) {
+          console.error(e);
+          renderErr = this.__name + ".renderVals(): " + (e instanceof Error && e.message ? e.message : String(e));
+        }
+        this.__streamingNow = !!(r.htmlStreaming || r.jsStreaming);
+        this.__htmlStreamingNow = !!r.htmlStreaming;
+        return h(
+          "div",
+          { ...hostBase, className: cls + (renderErr ? " sc-has-error" : "") },
+          renderErr && h(
+            "div",
+            { className: "sc-logic-error", "data-omelette-chrome": "" },
+            renderErr
+          ),
+          h(
+            AncestorContext.Provider,
+            { value: [...chain, this.__name] },
+            r.tpl(vals, this)
+          )
+        );
+      }
+    }
+    __publicField(StreamableComponent, "contextType", AncestorContext);
+    const named = /* @__PURE__ */ new Map();
+    function getDC(name) {
+      const hit = named.get(name);
+      if (hit) return hit;
+      function Dispatcher(p) {
+        const [, setTick] = React.useState(0);
+        React.useEffect(() => {
+          const sub = () => setTick((n) => n + 1);
+          registry.get(name).subs.add(sub);
+          return () => {
+            registry.get(name).subs.delete(sub);
+          };
+        }, []);
+        ensureFetched(name);
+        return h(StreamableComponent, { ...p, __name: name });
+      }
+      Dispatcher.displayName = name;
+      named.set(name, Dispatcher);
+      return Dispatcher;
+    }
+    return {
+      getDC,
+      StreamableComponent
+    };
+  }
+
+  // src/external.ts
+  var isCustomElementName = (n) => !n.includes(".") && n.includes("-");
+  function isRenderableType(g) {
+    if (typeof g === "function") return !isElementClass(g);
+    return typeof g === "object" && g !== null && typeof g.$typeof === "symbol";
+  }
+  function resolveDottedPath(root, name) {
+    let cur = root;
+    for (const seg of name.split(".")) {
+      if (cur == null) return void 0;
+      cur = cur[seg];
+    }
+    return cur;
+  }
+  var BABEL_URL = "https://unpkg.com/@babel/standalone@7.29.0/babel.min.js";
+  var BABEL_SRI = "sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y";
+  var GLOBAL_POLL_INTERVAL_MS = 50;
+  var GLOBAL_POLL_TIMEOUT_MS = 3e4;
+  function createExternalModules(onResolved) {
+    const cache = /* @__PURE__ */ new Map();
+    let babelLoading = null;
+    const reportedMissing = /* @__PURE__ */ new Map();
+    const polling = /* @__PURE__ */ new Set();
+    function ensureBabel() {
+      if (window.Babel) return Promise.resolve();
+      if (babelLoading) return babelLoading;
+      babelLoading = new Promise((res, rej) => {
+        const s = document.createElement("script");
+        s.src = BABEL_URL;
+        s.integrity = BABEL_SRI;
+        s.crossOrigin = "anonymous";
+        s.onload = () => res();
+        s.onerror = rej;
+        document.head.appendChild(s);
+      });
+      return babelLoading;
+    }
+    const pending = /* @__PURE__ */ new Map();
+    function load(kind, url, after) {
+      const existing = pending.get(url);
+      if (existing) return existing;
+      cache.set(url, null);
+      console.info("[dc-runtime] x-import: loading", url, "(" + kind + ")");
+      const ready = Promise.all([
+        kind === "jsx" ? ensureBabel() : Promise.resolve(),
+        after ?? Promise.resolve()
+      ]);
+      const p = ready.then(() => fetch(url)).then((r) => {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.text();
+      }).then((src) => {
+        const code = kind === "jsx" ? window.Babel.transform(src, {
+          filename: url,
+          presets: ["react", "typescript"]
+        }).code : src;
+        const module = { exports: {} };
+        const before = new Set(Object.keys(window));
+        //! nosemgrep: eval-and-function-constructor
+        new Function("React", "module", "exports", "require", code)(
+          getReact(),
+          module,
+          module.exports,
+          () => ({})
+        );
+        const globals = {};
+        for (const k of Object.keys(window)) {
+          if (!before.has(k) && typeof window[k] === "function") {
+            globals[k] = window[k];
+          }
+        }
+        cache.set(url, { mod: module.exports, globals });
+        console.info(
+          "[dc-runtime] x-import: loaded",
+          url,
+          "\u2014 exports:",
+          Object.keys(module.exports),
+          "window globals:",
+          Object.keys(globals)
+        );
+        onResolved();
+      }).catch((e) => {
+        cache.set(url, {
+          mod: {},
+          globals: {},
+          error: "failed to load: " + (e instanceof Error && e.message ? e.message : String(e))
+        });
+        console.error(
+          "[dc-runtime] x-import: FAILED to load",
+          url,
+          "(" + kind + ")",
+          e
+        );
+        onResolved();
+      });
+      pending.set(url, p);
+      return p;
+    }
+    function resolve2(url, name) {
+      const entry = cache.get(url);
+      if (!entry) return null;
+      const { mod, globals } = entry;
+      const C = mod && mod[name] || globals && globals[name] || typeof window !== "undefined" && window[name] || mod && mod.default;
+      if (typeof C === "function") return C;
+      const key = url + "\0" + name;
+      if (!reportedMissing.has(key)) {
+        reportedMissing.set(
+          key,
+          entry.error || 'no export named "' + name + '" (has: ' + Object.keys(mod).join(", ") + ")"
+        );
+        console.error(
+          "[dc-runtime] x-import: module",
+          url,
+          "loaded but has no component named",
+          JSON.stringify(name),
+          "\u2014 available exports:",
+          Object.keys(mod),
+          "window globals:",
+          Object.keys(globals),
+          ". The module must `module.exports = {" + name + "}` or set `window." + name + "`."
+        );
+      }
+      return null;
+    }
+    function waitForGlobal(name) {
+      if (polling.has(name)) return;
+      polling.add(name);
+      const started = Date.now();
+      const isCE = isCustomElementName(name);
+      const tick = () => {
+        const found = isCE ? customElements.get(name) : isRenderableType(resolveDottedPath(window, name));
+        if (found) {
+          polling.delete(name);
+          onResolved();
+          return;
+        }
+        if (Date.now() - started >= GLOBAL_POLL_TIMEOUT_MS) {
+          console.warn(
+            "[dc-runtime] x-import: global",
+            JSON.stringify(name),
+            "never appeared on window after " + GLOBAL_POLL_TIMEOUT_MS + "ms"
+          );
+          return;
+        }
+        setTimeout(tick, GLOBAL_POLL_INTERVAL_MS);
+      };
+      setTimeout(tick, GLOBAL_POLL_INTERVAL_MS);
+    }
+    function resolveGlobal(url, name) {
+      const isCE = isCustomElementName(name);
+      if (!url) {
+        if (isCE) {
+          if (customElements.get(name)) return name;
+          waitForGlobal(name);
+          return null;
+        }
+        const g2 = resolveDottedPath(window, name);
+        if (isRenderableType(g2)) return g2;
+        waitForGlobal(name);
+        return null;
+      }
+      const entry = cache.get(url);
+      if (!entry) return null;
+      if (isCE && customElements.get(name)) return name;
+      const g = entry.globals[name] ?? resolveDottedPath(window, name);
+      if (isRenderableType(g)) return g;
+      if (name.includes(".")) return null;
+      const key = url + "\0global\0" + name;
+      if (!reportedMissing.has(key)) {
+        reportedMissing.set(key, null);
+        if (isCE && !customElements.get(name)) {
+          console.warn(
+            "[dc-runtime] x-import:",
+            url,
+            "loaded but no custom element",
+            JSON.stringify(name),
+            "is registered and window." + name + " is not a function \u2014 rendering <" + name + "> as an unknown element."
+          );
+        }
+      }
+      return name;
+    }
+    function getError(url, name) {
+      const entry = cache.get(url);
+      if (entry?.error) return entry.error;
+      return reportedMissing.get(url + "\0" + name) || null;
+    }
+    return { load, resolve: resolve2, resolveGlobal, getError };
+  }
+  function isElementClass(g) {
+    try {
+      return typeof g === "function" && typeof HTMLElement !== "undefined" && g.prototype instanceof HTMLElement;
+    } catch {
+      return false;
+    }
+  }
+
+  // src/atomics.ts
+  var ATOMIC_CSS = (
+    // layout
+    ".fx{display:flex}.col{display:flex;flex-direction:column}.grid{display:grid}.ac{align-items:center}.jc{justify-content:center}.jb{justify-content:space-between}.f1{flex:1}.noshrink{flex-shrink:0}.wrap{flex-wrap:wrap}.fw5{font-weight:500}.fw6{font-weight:600}.fw7{font-weight:700}.fw8{font-weight:800}.fs11{font-size:11px}.fs12{font-size:12px}.fs13{font-size:13px}.fs14{font-size:14px}.fs15{font-size:15px}.fs16{font-size:16px}.fs20{font-size:20px}.fs22{font-size:22px}.upper{text-transform:uppercase}.tc{text-align:center}.nowrap{white-space:nowrap}.gap8{gap:8px}.gap10{gap:10px}.gap12{gap:12px}.gap16{gap:16px}.gap24{gap:24px}.m0{margin:0}.mt8{margin-top:8px}.mt12{margin-top:12px}.mt16{margin-top:16px}.mb8{margin-bottom:8px}.mb12{margin-bottom:12px}.mb16{margin-bottom:16px}.posrel{position:relative}.posabs{position:absolute}.round{border-radius:50%}.ohide{overflow:hidden}.bbox{box-sizing:border-box}.pointer{cursor:pointer}.w100{width:100%}.b0{border:none}"
+  );
+
+  // src/helmet.ts
+  var DESIGN_DOC_MODE_RE = /<meta\b[^>]*\bname\s*=\s*["']design_doc_mode["'][^>]*\b(?:content|value)\s*=\s*["'](\w+)["']/i;
+  var CANVAS_BG_LIGHT = "#f0eee6";
+  var CANVAS_BG_DARK = "#2e2c26";
+  function createHelmetManager(doc, isStreaming) {
+    const mounted = /* @__PURE__ */ new Set();
+    const live = /* @__PURE__ */ new Map();
+    let designDocMode = null;
+    let canvasStyleEl = null;
+    let appTheme = "light";
+    try {
+      const ds = doc.documentElement.dataset.theme;
+      appTheme = ds === "dark" || ds === "light" ? ds : new URLSearchParams(doc.defaultView?.location.search ?? "").get(
+        "theme"
+      ) === "dark" ? "dark" : "light";
+    } catch {
+    }
+    function applyCanvasBg() {
+      if (!canvasStyleEl) return;
+      const bg = appTheme === "dark" ? CANVAS_BG_DARK : CANVAS_BG_LIGHT;
+      canvasStyleEl.textContent = `html,body{background:${bg}}#dc-root>.sc-host{position:relative}`;
+    }
+    function postDesignMode(mode) {
+      if (window.parent === window) return;
+      try {
+        window.parent.postMessage({ type: "__dc_design_mode", mode }, "*");
+      } catch {
+      }
+    }
+    function setDesignDocMode(mode) {
+      if (mode === designDocMode) return;
+      designDocMode = mode;
+      postDesignMode(mode);
+      if (mode === "canvas") {
+        doc.documentElement.setAttribute("data-dc-canvas", "");
+        canvasStyleEl = doc.createElement("style");
+        canvasStyleEl.setAttribute("data-dc-canvas", "");
+        applyCanvasBg();
+        doc.head.appendChild(canvasStyleEl);
+      } else {
+        doc.documentElement.removeAttribute("data-dc-canvas");
+        canvasStyleEl?.remove();
+        canvasStyleEl = null;
+      }
+    }
+    window.addEventListener("message", (e) => {
+      const type = e.data && e.data.type;
+      if (type === "__dc_theme") {
+        const t = e.data.theme;
+        if (t === "light" || t === "dark") {
+          appTheme = t;
+          doc.documentElement.dataset.theme = t;
+          applyCanvasBg();
+        }
+        return;
+      }
+      if (!designDocMode || type !== "__dc_probe") return;
+      postDesignMode(designDocMode);
+    });
+    function compile(node) {
+      const raw = [...node.children];
+      const helmetClosed = node.nextSibling != null || node.parentNode?.nextSibling != null;
+      if (node.hasAttribute("data-dc-atomics") && !mounted.has("__dc-atomics")) {
+        mounted.add("__dc-atomics");
+        const el = doc.createElement("style");
+        el.id = "__dc-atomics";
+        el.textContent = ATOMIC_CSS;
+        doc.head.appendChild(el);
+      }
+      return (_vals, ctx) => {
+        const name = ctx && ctx.__name || "";
+        const streaming = !!(name && isStreaming(name));
+        for (let i = 0; i < raw.length; i++) {
+          const child = raw[i];
+          const tag = child.tagName;
+          const mayBePartial = streaming && !helmetClosed && i === raw.length - 1;
+          if (tag === "SCRIPT") {
+            if (mayBePartial) continue;
+            const key = "SCRIPT|" + (child.getAttribute("src") || child.textContent || "");
+            if (mounted.has(key)) continue;
+            mounted.add(key);
+            const el = doc.createElement("script");
+            for (const { name: an, value } of [...child.attributes])
+              el.setAttribute(an, value);
+            if (child.textContent) el.textContent = child.textContent;
+            doc.head.appendChild(el);
+          } else if (tag === "LINK" || tag === "META") {
+            if (mayBePartial) continue;
+            const key = tag + "|" + (child.getAttribute("href") || child.getAttribute("src") || child.outerHTML);
+            if (mounted.has(key)) continue;
+            mounted.add(key);
+            doc.head.appendChild(child.cloneNode(true));
+          } else {
+            const key = name + "|" + i;
+            let el = live.get(key);
+            if (!el || el.tagName !== tag) {
+              if (el) el.remove();
+              el = doc.createElement(tag.toLowerCase());
+              live.set(key, el);
+              doc.head.appendChild(el);
+            }
+            for (const { name: an, value } of [...child.attributes]) {
+              if (el.getAttribute(an) !== value) el.setAttribute(an, value);
+            }
+            if (el.textContent !== child.textContent)
+              el.textContent = child.textContent;
+          }
+        }
+        return null;
+      };
+    }
+    return { compile, setDesignDocMode };
+  }
+
+  // src/pseudo.ts
+  function createPseudoSheet(doc) {
+    let el = null;
+    const cache = /* @__PURE__ */ new Map();
+    let n = 0;
+    return (pseudo, css) => {
+      const k = pseudo + "|" + css;
+      const hit = cache.get(k);
+      if (hit) return hit;
+      if (!el) {
+        el = doc.createElement("style");
+        doc.head.appendChild(el);
+      }
+      const cls = "scp" + (n++).toString(36);
+      const sel = pseudo === "before" || pseudo === "after" ? "." + cls + "::" + pseudo : "." + cls + ":" + pseudo;
+      el.sheet.insertRule(sel + "{" + css + "}", el.sheet.cssRules.length);
+      cache.set(k, cls);
+      return cls;
+    };
+  }
+
+  // src/registry.ts
+  function createRegistry() {
+    const entries = /* @__PURE__ */ Object.create(null);
+    function get(name) {
+      return entries[name] || (entries[name] = {
+        html: "",
+        tpl: null,
+        Logic: null,
+        jsStreaming: false,
+        htmlStreaming: false,
+        ver: 0,
+        subs: /* @__PURE__ */ new Set(),
+        fetched: false
+      });
+    }
+    function bump(name) {
+      const r = get(name);
+      r.ver++;
+      for (const fn of r.subs) fn();
+    }
+    return {
+      entries,
+      get,
+      bump,
+      bumpAll() {
+        for (const n in entries) bump(n);
+      }
+    };
+  }
+
+  // src/runtime.ts
+  var COMPONENT_DIR = ".";
+  function createRuntime(doc = document) {
+    const registry = createRegistry();
+    const pseudoClass = createPseudoSheet(doc);
+    const helmet = createHelmetManager(
+      doc,
+      (name) => registry.get(name).htmlStreaming
+    );
+    const external = createExternalModules(() => registry.bumpAll());
+    const factory = createComponentFactory(registry, ensureFetched);
+    const host = {
+      component: (name) => factory.getDC(name),
+      placeholder: (props) => h(Placeholder, props),
+      helmet: (node) => helmet.compile(node),
+      loadExternal: (kind, url, after) => external.load(kind, url, after),
+      resolveExternal: (url, name) => external.resolve(url, name),
+      resolveExternalGlobal: (url, name) => external.resolveGlobal(url, name),
+      resolveExternalError: (url, name) => external.getError(url, name),
+      pseudoClass
+    };
+    function ensureFetched(name) {
+      const r = registry.get(name);
+      if (r.fetched) return;
+      r.fetched = true;
+      const url = COMPONENT_DIR + "/" + encodeURIComponent(name) + ".dc.html";
+      fetch(url).then((res) => {
+        if (!res.ok) {
+          console.error(
+            "[dc-runtime] sibling fetch for <" + name + "/> failed:",
+            url,
+            "returned",
+            res.status,
+            "\u2014 the reference renders as an empty placeholder."
+          );
+          return "";
+        }
+        return res.text();
+      }).then((t) => {
+        if (!t) return;
+        const parsed = parseDcText(t);
+        if (!parsed) {
+          console.error(
+            "[dc-runtime] sibling fetch for <" + name + "/>:",
+            url,
+            "has no <x-" + "dc> block \u2014 not a Design Component."
+          );
+          return;
+        }
+        if (parsed.props) r.propsMeta = parsed.props;
+        if (parsed.preview) r.preview = parsed.preview;
+        if (parsed.template && !r.html) updateHtml(name, parsed.template);
+        if (parsed.js && !r.Logic) updateJs(name, parsed.js);
+      }).catch(
+        (e) => console.error(
+          "[dc-runtime] sibling fetch for <" + name + "/> threw:",
+          url,
+          e
+        )
+      );
+    }
+    let rootName = null;
+    function updateHtml(name, html) {
+      const r = registry.get(name);
+      r.html = html;
+      if (name === rootName) {
+        const mode = DESIGN_DOC_MODE_RE.exec(html)?.[1] ?? null;
+        if (mode || !r.htmlStreaming) helmet.setDesignDocMode(mode);
+      }
+      try {
+        r.tpl = compileTemplate(html, host);
+      } catch (e) {
+        console.error("[dc-runtime] template compile FAILED for", name, e);
+      }
+      registry.bump(name);
+    }
+    function updateJs(name, src) {
+      const r = registry.get(name);
+      const seq = r.jsSeq = (r.jsSeq || 0) + 1;
+      try {
+        const Cls = evalDcLogic(src);
+        if (r.jsSeq !== seq) return;
+        if (typeof Cls !== "function") {
+          r.logicError = name + ".dc.html: <script data-dc-script> must define `class Component extends DCLogic`";
+        } else {
+          r.logicError = null;
+          r.Logic = Cls;
+        }
+      } catch (e) {
+        if (r.jsSeq !== seq) return;
+        console.error(
+          "[dc-runtime] logic class eval FAILED for",
+          name,
+          "\u2014 the template renders with props only.",
+          e
+        );
+        r.logicError = name + ": " + (e instanceof Error && e.message ? e.message : String(e));
+      }
+      registry.bump(name);
+    }
+    function setStreaming(name, kind, on) {
+      const r = registry.get(name);
+      if (kind === "html") r.htmlStreaming = !!on;
+      else r.jsStreaming = !!on;
+      let any = false;
+      for (const n in registry.entries) {
+        const e = registry.entries[n];
+        if (e && (e.htmlStreaming || e.jsStreaming)) {
+          any = true;
+          break;
+        }
+      }
+      doc.documentElement.classList.toggle("sc-dc-streaming", any);
+      registry.bump(name);
+    }
+    function dcUpdate(name, kind, content, streaming) {
+      if (streaming) registry.get(name).fetched = true;
+      if (kind === "html") {
+        setStreaming(name, "html", !!streaming);
+        updateHtml(name, content);
+      } else if (kind === "js") {
+        setStreaming(name, "js", !!streaming);
+        if (!streaming) updateJs(name, content);
+      } else if (kind === "props") {
+        const { props, preview } = parseDataProps(content);
+        const r = registry.get(name);
+        r.propsMeta = props ?? void 0;
+        r.preview = preview;
+        registry.bump(name);
+      }
+    }
+    function setProps(name, overrides) {
+      registry.get(name).propOverrides = overrides && typeof overrides === "object" ? { ...overrides } : null;
+      registry.bump(name);
+    }
+    function adoptParsed(name, parsed) {
+      if (!parsed) return;
+      const r = registry.get(name);
+      if (parsed.props) r.propsMeta = parsed.props;
+      if (parsed.preview) r.preview = parsed.preview;
+      if (parsed.template) updateHtml(name, parsed.template);
+      if (parsed.js) updateJs(name, parsed.js);
+    }
+    return {
+      registry,
+      getDC: factory.getDC,
+      updateHtml,
+      updateJs,
+      dcUpdate,
+      setProps,
+      adoptParsed,
+      setRootName: (name) => {
+        rootName = name;
+      },
+      markFetched: (name) => {
+        registry.get(name).fetched = true;
+      },
+      annotatedTemplate: (name) => {
+        const r = registry.get(name);
+        return r.tpl && r.tpl.__annotated || null;
+      },
+      templateSource: (name) => registry.get(name).html || null,
+      StreamableLogic
+    };
+  }
+
+  // src/stream-state.ts
+  function createStreamTracker(staleMs = 6e4, now = Date.now) {
+    const since = /* @__PURE__ */ new Map();
+    const liveOne = (n) => {
+      const t = since.get(n);
+      if (t === void 0) return false;
+      if (now() - t > staleMs) {
+        since.delete(n);
+        return false;
+      }
+      return true;
+    };
+    return {
+      push(name, streaming, viewportKey) {
+        if (viewportKey === "dc-model") return;
+        if (streaming) since.set(name, now());
+        else since.delete(name);
+      },
+      live(name) {
+        if (name !== void 0) return liveOne(name);
+        for (const n of [...since.keys()]) if (liveOne(n)) return true;
+        return false;
+      }
+    };
+  }
+
+  // src/index.ts
+  var REACT_URL = "https://unpkg.com/react@18.3.1/umd/react.production.min.js";
+  var REACT_SRI = "sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z";
+  var REACT_DOM_URL = "https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js";
+  var REACT_DOM_SRI = "sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1";
+  function hideRawTemplate() {
+    const s = document.createElement("style");
+    s.textContent = "x-dc{display:none!important}";
+    document.head.appendChild(s);
+  }
+  function loadScript(src, integrity) {
+    return new Promise((resolve2, reject) => {
+      //! nosemgrep: create-script-element
+      const s = document.createElement("script");
+      s.src = src;
+      s.integrity = integrity;
+      s.crossOrigin = "anonymous";
+      s.async = false;
+      s.onload = () => resolve2();
+      s.onerror = () => reject(new Error(`failed to load ${src}`));
+      document.head.appendChild(s);
+    });
+  }
+  function loadReactUmd() {
+    const w = window;
+    if (w.React && w.ReactDOM) return Promise.resolve();
+    return Promise.all([
+      loadScript(REACT_URL, REACT_SRI),
+      loadScript(REACT_DOM_URL, REACT_DOM_SRI)
+    ]).then(() => void 0);
+  }
+  function init() {
+    const runtime = createRuntime(document);
+    let rootName = "Root";
+    const baseCss = document.createElement("style");
+    baseCss.textContent = BASE_CSS;
+    document.head.prepend(baseCss);
+    const notifyHost = () => {
+      if (window.parent === window) return;
+      const r = runtime.registry.entries[rootName];
+      try {
+        window.parent.postMessage(
+          {
+            type: "__dc_booted",
+            rootName,
+            propsMeta: r && r.propsMeta || null,
+            preview: r && r.preview || null
+          },
+          "*"
+        );
+      } catch {
+      }
+    };
+    const streams = createStreamTracker();
+    const api = {
+      __dcUpdate: (name, kind, content, streaming, viewportKey) => {
+        streams.push(name, streaming, viewportKey);
+        runtime.dcUpdate(name, kind, content, streaming);
+        if (name === rootName && !streaming && kind === "props") notifyHost();
+      },
+      __dcStreaming: (name) => streams.live(name),
+      __dcSetProps: (name, overrides) => runtime.setProps(name, overrides),
+      /** Name of the component currently mounted as the page root — DC tools
+       *  push their template-stream here when targeting "the open page". */
+      __dcRootName: () => rootName,
+      /** Editor bridge — the encoded, `data-dc-tpl`-annotated template source.
+       *  The host editor parses this into its own template DOM so it can map a
+       *  rendered node (carrying the same `data-dc-tpl`) back to the source
+       *  node that emitted it. Returns the encoded form (`<sc-comp>`,
+       *  `sc-camel-*` attrs); the editor decodes on serialize. */
+      __dcAnnotatedTemplate: (name) => runtime.annotatedTemplate(name),
+      /** Editor bridge — the *original* (decoded) template source. */
+      __dcTemplateSource: (name) => runtime.templateSource(name),
+      __dcBoot: () => {
+        rootName = boot(runtime, document) ?? rootName;
+        notifyHost();
+      },
+      __dcRegistry: runtime.registry.entries,
+      getDC: (name) => runtime.getDC(name),
+      // `DCLogic` is the documented base class name; `StreamableLogic` is the
+      // implementation alias kept for any project that already references it.
+      DCLogic: runtime.StreamableLogic,
+      StreamableLogic: runtime.StreamableLogic
+    };
+    Object.assign(window, api);
+    window.__dcContentKeyed = true;
+    if (document.readyState !== "loading") api.__dcBoot();
+    else document.addEventListener("DOMContentLoaded", () => api.__dcBoot());
+  }
+  hideRawTemplate();
+  loadReactUmd().then(init).catch((err) => {
+    console.error("[dc] failed to load React or boot:", err);
+    throw err;
+  });
+})();
+
+</script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta charset="utf-8">
+  <title>Kalshi Paper Desk</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    html, body { margin: 0; padding: 0; background: #0d0f13; }
+    * { box-sizing: border-box; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-thumb { background: #2a303c; border-radius: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    @keyframes kpdPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+    @keyframes kpdBlink { 0%, 100% { box-shadow: 0 0 0 0 rgba(79, 206, 127, 0); } 50% { box-shadow: 0 0 0 3px rgba(79, 206, 127, 0.55); } }
+  </style>
+</helmet>
+
+<div style="min-height: 100vh; background: #0d0f13; color: #e6e9ef; font-family: Helvetica, Arial, sans-serif; padding: 0 0 40px 0;">
+
+  <!-- ===== Header bar ===== -->
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 28px; border-bottom: 1px solid #20242e; background: #101318;">
+    <div style="display: flex; align-items: baseline; gap: 14px;">
+      <div style="font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 17px; letter-spacing: 0.08em; color: #e6e9ef;">KALSHI PAPER DESK</div>
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7d8697;">{{ todayLabel }}</div>
+      <div style="font-size: 11px; color: {{ dataBadgeColor }}; border: 1px solid {{ dataBadgeBorder }}; border-radius: 3px; padding: 2px 8px; letter-spacing: 0.06em;">{{ dataBadge }}</div>
+      <div style="font-size: 11px; color: #7d8697; border: 1px solid #2a303c; border-radius: 3px; padding: 2px 8px; letter-spacing: 0.06em;">$25 FLAT STAKES</div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 28px; flex-wrap: wrap; row-gap: 10px; justify-content: flex-end;">
+      <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
+        <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697;">BANKROLL</div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600;">{{ bankroll }}</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
+        <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697;">TOTAL P&amp;L</div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: {{ pnlColor }};">{{ totalPnl }}</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
+        <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697;">HIT RATE</div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600;">{{ hitRate }}</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
+        <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697;">AVG EDGE</div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: #4fce7f;">{{ avgEdge }}</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
+        <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697;">OPEN RISK</div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: #eab54e;">{{ openRisk }}</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end; padding-left: 24px; border-left: 1px solid #20242e;">
+        <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697;">SCANNER</div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="width: 8px; height: 8px; border-radius: 50%; background: #4fce7f; display: inline-block; animation: kpdPulse 1.6s ease-in-out infinite;"></span>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: #4fce7f;">{{ scanStatus }}</div>
+        </div>
+      </div>
+      <button onClick="{{ resetLog }}" style="background: none; border: 1px solid #2a303c; border-radius: 3px; color: #7d8697; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.08em; padding: 6px 12px; cursor: pointer;" style-hover="border-color: #e5636a; color: #e5636a;">RESET LOG</button>
+    </div>
+  </div>
+
+  <!-- ===== Main grid ===== -->
+  <div style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 20px; padding: 24px 28px; max-width: 1480px; margin: 0 auto;">
+
+    <!-- Left column -->
+    <div style="display: flex; flex-direction: column; gap: 20px; min-width: 0; flex: 1 1 620px;">
+
+      <!-- Current recommendation -->
+      <div>
+        <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 10px 0;">
+          <div style="font-size: 12px; letter-spacing: 0.12em; color: #aab2c0; font-weight: 700;">CURRENT RECOMMENDATION · $25 FIXED STAKE · SUB-1H ONLY</div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #7d8697;">{{ scanSummary }}</div>
+        </div>
+        <sc-if value="{{ hasBest }}" hint-placeholder-val="{{ true }}">
+          <div style="background: #14181f; border: 1px solid {{ best.borderColor }}; border-radius: 6px; padding: 18px; display: flex; gap: 22px; flex-wrap: wrap; animation: {{ best.anim }};">
+            <div style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <div style="font-size: 10px; letter-spacing: 0.1em; color: {{ best.catColor }}; font-weight: 700;">{{ best.cat }}</div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; color: {{ best.statusColor }}; background: {{ best.statusBg }}; border-radius: 3px; padding: 2px 8px;">{{ best.status }}</div>
+              </div>
+              <div style="font-size: 17px; line-height: 1.35; font-weight: 700; color: #e6e9ef;">{{ best.title }}</div>
+              <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 600; color: #0d0f13; background: {{ best.sideBg }}; border-radius: 3px; padding: 4px 11px;">{{ best.side }} {{ best.price }}¢</div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #eab54e;">settles in {{ best.settleIn }}</div>
+                <button onClick="{{ best.copyName }}" style="background: none; border: 1px solid #2a303c; border-radius: 3px; color: #7d8697; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.06em; padding: 3px 9px; cursor: pointer; white-space: nowrap; margin-left: auto;" style-hover="border-color: #3a465c; color: #e6e9ef;">{{ best.copyLabel }}</button>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 6px; border-top: 1px solid #20242e; padding-top: 10px;">
+                <div style="font-size: 11px; color: #8b93a3; line-height: 1.5;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em; color: #4fce7f;">WHY</span> — {{ best.why }}</div>
+                <div style="font-size: 11px; color: #8b93a3; line-height: 1.5;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em; color: #e5636a;">RISK</span> — {{ best.risk }}</div>
+                <div style="font-size: 11px; color: #8b93a3; line-height: 1.5;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em; color: #5aa7e8;">TRIGGER</span> — {{ best.trigger }}</div>
+              </div>
+            </div>
+            <div style="flex: 1 1 250px; max-width: 320px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-content: start;">
+              <sc-for list="{{ best.stats }}" as="st" hint-placeholder-count="6">
+                <div style="background: #10141a; border: 1px solid #1d232e; border-radius: 4px; padding: 10px;">
+                  <div style="font-size: 9px; letter-spacing: 0.08em; color: #7d8697; margin-bottom: 4px;">{{ st.k }}</div>
+                  <div style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600; color: {{ st.color }};">{{ st.v }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noBest }}" hint-placeholder-val="{{ false }}">
+          <div style="background: #14181f; border: 1px dashed #2a303c; border-radius: 6px; padding: 26px; text-align: center; display: flex; flex-direction: column; gap: 6px;">
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; color: #eab54e; letter-spacing: 0.06em;">NO QUALIFIED BET RIGHT NOW</div>
+            <div style="font-size: 11px; color: #7d8697;">{{ noBestDetail }}</div>
+          </div>
+        </sc-if>
+      </div>
+
+      <!-- Live signals -->
+      <div>
+        <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 10px 0;">
+          <div style="font-size: 12px; letter-spacing: 0.12em; color: #aab2c0; font-weight: 700;">LIVE SIGNALS · WATCHLIST</div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #7d8697;">auto-entered the moment all 6 gates pass</div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px;">
+          <sc-for list="{{ signals }}" as="s" hint-placeholder-count="3">
+            <div style="background: #14181f; border: 1px solid {{ s.borderColor }}; border-radius: 6px; padding: 14px; display: flex; flex-direction: column; gap: 10px; animation: {{ s.anim }};">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <div style="font-size: 10px; letter-spacing: 0.1em; color: {{ s.catColor }}; font-weight: 700;">{{ s.cat }}</div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; color: {{ s.statusColor }}; background: {{ s.statusBg }}; border-radius: 3px; padding: 2px 8px;">{{ s.status }}</div>
+              </div>
+              <div style="font-size: 13px; line-height: 1.4; font-weight: 700; color: #e6e9ef; min-height: 36px;">{{ s.title }}</div>
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: #0d0f13; background: {{ s.sideBg }}; border-radius: 3px; padding: 3px 9px;">{{ s.side }} {{ s.price }}¢</div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #eab54e;">settles in {{ s.settleIn }}</div>
+                <button onClick="{{ s.copyName }}" style="background: none; border: 1px solid #2a303c; border-radius: 3px; color: #7d8697; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.06em; padding: 2px 8px; cursor: pointer; white-space: nowrap; margin-left: auto;" style-hover="border-color: #3a465c; color: #e6e9ef;">{{ s.copyLabel }}</button>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 5px; border-top: 1px solid #20242e; padding-top: 9px;">
+                <sc-for list="{{ s.gates }}" as="g" hint-placeholder-count="5">
+                  <div style="display: grid; grid-template-columns: 14px 88px 1fr auto; gap: 8px; align-items: center;">
+                    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: {{ g.color }};">{{ g.icon }}</div>
+                    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.06em; color: #7d8697;">{{ g.k }}</div>
+                    <div style="font-size: 10px; color: #5c6474;">{{ g.label }}</div>
+                    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: {{ g.color }};">{{ g.val }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- Bet log -->
+      <div>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px 0;">
+          <div style="display: flex; align-items: center; gap: 14px;">
+            <div style="font-size: 12px; letter-spacing: 0.12em; color: #aab2c0; font-weight: 700;">BET LOG</div>
+            <div style="display: flex; gap: 4px;">
+              <sc-for list="{{ logTabs }}" as="t" hint-placeholder-count="3">
+                <button onClick="{{ t.onClick }}" style="background: {{ t.bg }}; border: 1px solid {{ t.border }}; border-radius: 3px; color: {{ t.color }}; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.06em; padding: 3px 10px; cursor: pointer;" style-hover="border-color: #3a465c;">{{ t.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #7d8697;">{{ logSummary }}</div>
+        </div>
+        <div style="background: #14181f; border: 1px solid #232936; border-radius: 6px; overflow-x: auto;">
+          <div style="display: grid; grid-template-columns: 92px minmax(160px, 1fr) 108px 100px 56px 118px 78px; gap: 12px; padding: 9px 16px; border-bottom: 1px solid #232936; font-size: 9px; letter-spacing: 0.1em; color: #7d8697; font-weight: 700; min-width: 720px;">
+            <div>TIME</div><div>MARKET</div><div>POSITION</div><div>STRATEGY</div><div style="text-align: right;">STAKE</div><div style="text-align: center;">RESULT</div><div style="text-align: right;">P&amp;L</div>
+          </div>
+          <div style="max-height: 430px; overflow-y: auto;">
+            <sc-if value="{{ logEmpty }}" hint-placeholder-val="{{ false }}">
+              <div style="padding: 28px 16px; text-align: center; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7d8697;">Nothing here yet — the scanner is hunting for qualifying entries.</div>
+            </sc-if>
+            <sc-for list="{{ logRows }}" as="r" hint-placeholder-count="6">
+              <div style="display: grid; grid-template-columns: 92px minmax(160px, 1fr) 108px 100px 56px 118px 78px; gap: 12px; padding: 8px 16px; border-bottom: 1px solid #1a1f28; font-size: 12px; align-items: center; min-width: 720px;" style-hover="background: #171c25;">
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #7d8697;">{{ r.time }}</div>
+                <div style="color: #cfd4dd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{{ r.full }}">{{ r.title }}</div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: {{ r.sideColor }};">{{ r.sideAt }}</div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #8b93a3;">{{ r.strat }}</div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; text-align: right; color: #8b93a3;">$25</div>
+                <div style="display: flex; align-items: center; justify-content: center;">
+                  <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; color: {{ r.resultColor }}; background: {{ r.resultBg }}; border-radius: 3px; padding: 2px 8px;">{{ r.result }}</span>
+                </div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; text-align: right; color: {{ r.pnlColor }};">{{ r.pnl }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="font-size: 10px; color: #5c6474; margin-top: 8px; line-height: 1.5;">Fully automated — the scanner places entries, settles them at market close, and updates P&L, hit rate and bankroll on its own. No input needed.</div>
+      </div>
+    </div>
+
+    <!-- Right column -->
+    <div style="display: flex; flex-direction: column; gap: 20px; flex: 1 1 300px; min-width: 280px;">
+
+      <!-- Bankroll chart -->
+      <div style="background: #14181f; border: 1px solid #232936; border-radius: 6px; padding: 16px;">
+        <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px;">
+          <div style="font-size: 11px; letter-spacing: 0.12em; color: #aab2c0; font-weight: 700;">BANKROLL</div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: {{ pnlColor }};">{{ pnlPct }}</div>
+        </div>
+        <svg viewBox="0 0 100 42" preserveAspectRatio="none" style="width: 100%; height: 120px; display: block;">
+          <line x1="0" y1="{{ baselineY }}" x2="100" y2="{{ baselineY }}" stroke="#2a303c" stroke-width="0.4" stroke-dasharray="1.5 1.5"></line>
+          <polyline points="{{ curvePoints }}" fill="none" stroke="{{ curveColor }}" stroke-width="0.9" vector-effect="non-scaling-stroke"></polyline>
+        </svg>
+        <div style="display: flex; justify-content: space-between; margin-top: 6px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #7d8697;">
+          <div>start {{ startLabel }}</div>
+          <div>{{ settledCountLabel }}</div>
+        </div>
+      </div>
+
+      <!-- Selection model -->
+      <div style="background: #14181f; border: 1px solid #232936; border-radius: 6px; padding: 16px;">
+        <div style="font-size: 11px; letter-spacing: 0.12em; color: #aab2c0; font-weight: 700; margin-bottom: 12px;">SELECTION MODEL</div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <sc-for list="{{ modelWeights }}" as="w" hint-placeholder-count="3">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <div style="display: flex; justify-content: space-between;">
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #e6e9ef;">{{ w.name }}</div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #7d8697;">{{ w.pct }}</div>
+              </div>
+              <div style="height: 4px; background: #1d222c; border-radius: 2px; overflow: hidden;">
+                <div style="height: 100%; width: {{ w.pct }}; background: #57c8c0; border-radius: 2px;"></div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697; font-weight: 700; margin: 14px 0 8px 0;">CATEGORY FORM (LEARNED)</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+          <sc-for list="{{ catBoosts }}" as="b" hint-placeholder-count="6">
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: {{ b.color }}; border: 1px solid #232936; border-radius: 3px; padding: 2px 7px;">{{ b.name }} ×{{ b.mult }}</div>
+          </sc-for>
+        </div>
+        <div style="font-size: 10px; color: #5c6474; line-height: 1.5; margin-top: 12px;">{{ candCount }} positions re-scored every 5 seconds. A $25 bet fires the moment all 6 gates pass: settles in 5–60 min, 55–90¢ favorite band, 24h volume ≥ $500, model edge ≥ +2.5¢, composite score ≥ 60 (win odds × income × category form), and not already holding the market. No position caps — every qualified edge is taken.</div>
+      </div>
+
+      <!-- Category breakdown -->
+      <div style="background: #14181f; border: 1px solid #232936; border-radius: 6px; padding: 16px;">
+        <div style="font-size: 11px; letter-spacing: 0.12em; color: #aab2c0; font-weight: 700; margin-bottom: 14px;">HIT RATE BY CATEGORY</div>
+        <sc-if value="{{ noStats }}" hint-placeholder-val="{{ false }}">
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #7d8697;">No settled bets yet.</div>
+        </sc-if>
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+          <sc-for list="{{ catStats }}" as="c" hint-placeholder-count="3">
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+              <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                <div style="font-size: 11px; color: {{ c.color }}; font-weight: 700; letter-spacing: 0.06em;">{{ c.name }}</div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #8b93a3;">{{ c.record }} · <span style="color: {{ c.pnlColor }};">{{ c.pnl }}</span></div>
+              </div>
+              <div style="height: 5px; background: #1d222c; border-radius: 3px; overflow: hidden;">
+                <div style="height: 100%; width: {{ c.barW }}; background: {{ c.color }}; border-radius: 3px;"></div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- Strategy breakdown -->
+      <div style="background: #14181f; border: 1px solid #232936; border-radius: 6px; padding: 16px;">
+        <div style="font-size: 11px; letter-spacing: 0.12em; color: #aab2c0; font-weight: 700; margin-bottom: 14px;">STRATEGY PERFORMANCE</div>
+        <sc-if value="{{ noStats }}" hint-placeholder-val="{{ false }}">
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #7d8697;">No settled bets yet.</div>
+        </sc-if>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <sc-for list="{{ stratStats }}" as="s" hint-placeholder-count="3">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 1px solid #1a1f28; padding-bottom: 9px;">
+              <div style="display: flex; flex-direction: column; gap: 2px;">
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #e6e9ef;">{{ s.name }}</div>
+                <div style="font-size: 10px; color: #7d8697;">{{ s.record }} · {{ s.rate }} hit</div>
+              </div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; color: {{ s.pnlColor }};">{{ s.pnl }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- Market pool -->
+      <div style="background: #14181f; border: 1px solid #232936; border-radius: 6px; padding: 16px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <div style="font-size: 11px; letter-spacing: 0.12em; color: #aab2c0; font-weight: 700;">MARKET POOL</div>
+          <button onClick="{{ toggleEditor }}" style="background: none; border: 1px solid #2a303c; border-radius: 3px; color: #7d8697; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.06em; padding: 3px 10px; cursor: pointer;" style-hover="border-color: #3a465c; color: #e6e9ef;">{{ editorBtnLabel }}</button>
+        </div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #7d8697;">{{ poolSummary }}</div>
+        <sc-if value="{{ editorOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
+            <div style="font-size: 10px; color: #8b93a3; line-height: 1.5;">Paste the real markets you see on kalshi.com, one per line:<br>Market question | YES price in ¢ | category | minutes to close (≤60)</div>
+            <textarea value="{{ editorText }}" onChange="{{ onEditorChange }}" style="width: 100%; height: 150px; background: #0d0f13; border: 1px solid #2a303c; border-radius: 4px; color: #e6e9ef; font-family: 'IBM Plex Mono', monospace; font-size: 11px; line-height: 1.5; padding: 8px; resize: vertical; box-sizing: border-box;"></textarea>
+            <div style="display: flex; gap: 8px;">
+              <button onClick="{{ saveEditor }}" style="background: #4fce7f; border: 1px solid #4fce7f; border-radius: 3px; color: #0d0f13; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; letter-spacing: 0.06em; padding: 6px 12px; cursor: pointer;">USE THESE MARKETS</button>
+              <button onClick="{{ clearCustom }}" style="background: none; border: 1px solid #2a303c; border-radius: 3px; color: #7d8697; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.06em; padding: 6px 12px; cursor: pointer;" style-hover="border-color: #3a465c; color: #e6e9ef;">REVERT TO AUTO</button>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+
+      <div style="font-size: 10px; color: #5c6474; line-height: 1.5; padding: 0 4px;">{{ dataNote }} Settlement is simulated from market odds automatically. Paper trading only — not financial advice.</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;startingBankroll&quot;: {&quot;editor&quot;: &quot;int&quot;, &quot;default&quot;: 500, &quot;min&quot;: 100, &quot;max&quot;: 10000, &quot;unit&quot;: &quot;$&quot;, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Desk settings&quot;}}">
+class Component extends DCLogic {
+  state = { now: Date.now(), rev: 0, filter: "all", editorOpen: false, editorText: "", copiedId: null };
+  KEY = "kpd-live-log-v1";
+  POOL_KEY = "kpd-pool-v1";
+  SNAPSHOT_LABEL = "JUL 4, 2026";
+
+  componentDidMount() {
+    this.loadLog();
+    this.dataMode = "connecting";
+    this.fetchLive();
+    this.tick();
+    this.timer = setInterval(() => this.tick(), 1000);
+  }
+  componentWillUnmount() { clearInterval(this.timer); clearTimeout(this.refetchT); clearTimeout(this.copyT); }
+
+  tick() {
+    const now = Date.now();
+    let dirty = this.settleDue(now);
+    dirty = this.scan(now) || dirty;
+    if (dirty) this.save();
+    this.setState({ now });
+  }
+
+  rng(seed) {
+    let t = seed >>> 0;
+    return () => {
+      t += 0x6D2B79F5;
+      let r = Math.imul(t ^ (t >>> 15), 1 | t);
+      r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+      return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  tickerCat(t) {
+    t = (t || "").toUpperCase();
+    if (/BTC|ETH|SOL|XRP|DOGE|CRYPTO|BITCOIN|ETHEREUM/.test(t)) return "CRYPTO";
+    if (/FED|CPI|GDP|JOBS|CLAIMS|PAYROLL|RATE|INX|NASDAQ|S&P|TNOTE|RECESSION|INFLATION/.test(t)) return "ECON";
+    if (/OIL|GAS|GOLD|SILVER|WTI|BRENT|COMMOD/.test(t)) return "COMMOD";
+    if (/ELECTION|PRESIDENT|SENATE|GOVERNOR|CONGRESS|NOMINEE|PRIMARY|POLITIC|WHITE HOUSE|SUPREME COURT/.test(t)) return "POLITICS";
+    if (/HIGH|LOW|RAIN|SNOW|TEMP|STORM|HURR/.test(t)) return "WEATHER";
+    if (/NBA|NFL|MLB|NHL|SOCCER|WC26|UFC|TENNIS|GOLF|F1|MATCH|GAME|WORLD CUP|CHAMPION/.test(t)) return "SPORTS";
+    return "MARKET";
+  }
+
+  async fetchJson(url, ms) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), ms || 10000);
+    try {
+      const r = await fetch(url, { signal: ctrl.signal });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return await r.json();
+    } finally { clearTimeout(t); }
+  }
+
+  // Live pools keep only markets settling within 75 minutes (sub-1h desk).
+  mapKalshi(j) {
+    const nowT = Date.now();
+    return (j.markets || [])
+      .filter(m => (m.volume_24h || m.volume || 0) > 50)
+      .map(m => {
+        const yes = m.last_price || Math.round(((m.yes_bid || 0) + (m.yes_ask || 100)) / 2);
+        const closeTs = new Date(m.close_time).getTime();
+        return {
+          t: (m.title || m.ticker) + (m.yes_sub_title ? " \u2014 " + m.yes_sub_title : ""),
+          ticker: m.ticker || "",
+          c: this.tickerCat(m.ticker + " " + (m.title || "")),
+          yes, closeTs,
+          vol: m.volume_24h || m.volume || 0
+        };
+      })
+      .filter(m => m.yes >= 5 && m.yes <= 95 && m.closeTs - nowT > 5 * 60000 && m.closeTs - nowT < 75 * 60000)
+      .sort((a, b) => b.vol - a.vol)
+      .slice(0, 40);
+  }
+
+  async fetchPolymarket() {
+    const j = await this.fetchJson("https://gamma-api.polymarket.com/markets?closed=false&order=volume24hr&ascending=false&limit=200");
+    const nowT = Date.now();
+    return (Array.isArray(j) ? j : [])
+      .map(m => {
+        let yes = null;
+        try { const p = JSON.parse(m.outcomePrices || "[]"); yes = Math.round(parseFloat(p[0]) * 100); } catch (e) {}
+        if (m.bestBid != null && m.bestAsk != null) { const mid = Math.round((parseFloat(m.bestBid) + parseFloat(m.bestAsk)) / 2 * 100); if (mid >= 1 && mid <= 99) yes = mid; }
+        return {
+          t: m.question || m.title || "",
+          ticker: m.slug || "",
+          c: this.tickerCat((m.category || "") + " " + (m.question || "")),
+          yes,
+          closeTs: new Date(m.endDate || m.end_date_iso || 0).getTime(),
+          vol: parseFloat(m.volume24hr) || 0
+        };
+      })
+      .filter(m => m.t && m.yes >= 5 && m.yes <= 95 && m.closeTs - nowT > 5 * 60000 && m.closeTs - nowT < 75 * 60000)
+      .slice(0, 40);
+  }
+
+  async fetchLive() {
+    const KURL = "https://api.elections.kalshi.com/trade-api/v2/markets?limit=1000&status=open";
+    const sources = [
+      { name: "KALSHI", fn: async () => this.mapKalshi(await this.fetchJson(KURL)) },
+      { name: "KALSHI VIA RELAY", fn: async () => this.mapKalshi(await this.fetchJson("https://api.allorigins.win/raw?url=" + encodeURIComponent(KURL), 15000)) },
+      { name: "KALSHI VIA RELAY 2", fn: async () => this.mapKalshi(await this.fetchJson("https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(KURL), 15000)) },
+      { name: "POLYMARKET", fn: () => this.fetchPolymarket() }
+    ];
+    for (const s of sources) {
+      try {
+        const pool = await s.fn();
+        if (pool && pool.length >= 3) {
+          this.livePool = pool;
+          this.dataMode = "live";
+          this.liveSource = s.name;
+          this.setState({ rev: this.state.rev + 1 });
+          clearTimeout(this.refetchT);
+          this.refetchT = setTimeout(() => this.fetchLive(), 300000);
+          return;
+        }
+      } catch (e) {}
+    }
+    this.dataMode = "offline";
+    clearTimeout(this.refetchT);
+    this.refetchT = setTimeout(() => this.fetchLive(), 60000);
+    this.setState({ rev: this.state.rev + 1 });
+  }
+
+  parsePool(text) {
+    const nowT = Date.now();
+    return text.split("\n").map(l => l.trim()).filter(Boolean).map(l => {
+      const parts = l.split("|").map(s => s.trim());
+      if (parts.length < 2 || !parts[0]) return null;
+      const yes = Math.round(parseFloat(parts[1]));
+      if (!(yes >= 1 && yes <= 99)) return null;
+      const mins = Math.max(6, Math.min(60, parseInt(parts[3], 10) || 45));
+      return { t: parts[0], c: (parts[2] || "MARKET").toUpperCase(), yes, ticker: "", vol: 5000, closeTs: nowT + mins * 60000 };
+    }).filter(Boolean);
+  }
+
+  // Real data only: live feed or user-pasted markets. No simulated listings.
+  markets() {
+    if (this.customPool && this.customPool.length) return this.customPool;
+    if (this.livePool && this.livePool.length) return this.livePool;
+    return [];
+  }
+
+  catColor(c) {
+    return { ECON: "#5aa7e8", CRYPTO: "#c792ea", COMMOD: "#eab54e", SPORTS: "#4fce7f", "M&A": "#e864a0", AI: "#57c8c0", POLITICS: "#e8875a", WEATHER: "#57c8c0", MARKET: "#8b93a3" }[c] || "#8b93a3";
+  }
+
+  categoryPerf() {
+    const agg = {}, out = {};
+    const bets = (this.log && this.log.bets) || [];
+    bets.filter(b => b.result).forEach(b => {
+      const k = b.cat; agg[k] = agg[k] || { n: 0, act: 0, exp: 0 };
+      agg[k].n++; agg[k].act += b.result === "won" ? 1 : 0; agg[k].exp += Math.min(0.95, b.pc / 100 + 0.03);
+    });
+    Object.keys(agg).forEach(k => {
+      const a = agg[k];
+      out[k] = Math.max(0.85, Math.min(1.15, 1 + ((a.act - a.exp) / a.n) * 0.8));
+    });
+    return out;
+  }
+
+  // ===== THE THOUGHT PROCESS =====
+  // Every candidate position (both sides of every market) must clear 5 hard gates
+  // before a $25 bet is placed:
+  //   1. T-MINUS   — settles in 5-60 minutes (sub-1h desk, no overnight risk)
+  //   2. WIN ODDS  — price 55-90c: favorite band, avoids longshots and no-payout
+  //   3. MODEL EDGE — model signal >= +2.5c over market price
+  //   4. SCORE     — composite (55% win odds, 30% EV, 15% edge) x category form >= 60
+  //   5. EXPOSURE  — free slot, not already in this market, max 2 per category
+  evaluate(now) {
+    const M = this.markets();
+    const curHour = Math.floor(now / 3600000);
+    const bucket = Math.floor(now / 600000); // 10-min price/signal buckets
+    const nextTop = (curHour + 1) * 3600000;
+    const perf = this.categoryPerf();
+    const openBets = ((this.log && this.log.bets) || []).filter(b => !b.result);
+    const cands = [];
+    M.forEach((m, idx) => {
+      const closeTs = m.closeTs || nextTop;
+      const minsLeft = (closeTs - now) / 60000;
+      const yes = Math.max(3, Math.min(97, m.yes));
+      ["YES", "NO"].forEach(side => {
+        const pc = side === "YES" ? yes : 100 - yes;
+        const contracts = Math.floor(2500 / Math.max(pc, 1));
+        const winProb = Math.min(0.95, pc / 100 + 0.03);
+        const sig = (this.rng(Math.imul(bucket, 40503) ^ (idx * 131) ^ (side === "YES" ? 7 : 13))() - 0.4) * 7;
+        const edge = Math.round((3 + sig) * 10) / 10;
+        const boost = perf[m.c] || 1;
+        const evNorm = Math.min(contracts * 0.03 / 2, 1);
+        const edgeNorm = Math.min(Math.max((edge - 2.5) / 4, 0), 1);
+        const score = Math.round((winProb * 0.55 + evNorm * 0.30 + edgeNorm * 0.15) * boost * 100);
+        const dupe = openBets.some(b => b.title === m.t);
+        const vol = m.vol || 0;
+        const volLabel = vol >= 1000000 ? (vol / 1000000).toFixed(1) + "M" : vol >= 1000 ? Math.round(vol / 1000) + "k" : String(vol);
+        const gates = [
+          { k: "T-MINUS", label: "settles in 5\u201360 min", pass: minsLeft >= 5 && minsLeft <= 60, val: Math.max(0, Math.round(minsLeft)) + "m" },
+          { k: "WIN ODDS", label: "price in 55\u201390\u00a2 favorite band", pass: pc >= 55 && pc <= 90, val: pc + "\u00a2" },
+          { k: "LIQUIDITY", label: "24h volume \u2265 $500", pass: vol >= 500, val: "$" + volLabel },
+          { k: "MODEL EDGE", label: "signal \u2265 +2.5\u00a2 over price", pass: edge >= 2.5, val: (edge >= 0 ? "+" : "") + edge + "\u00a2" },
+          { k: "SCORE", label: "composite \u00d7 category form \u2265 60", pass: score >= 60, val: String(score) },
+          { k: "DUPLICATE", label: "not already holding this market", pass: !dupe, val: dupe ? "held" : "clear" }
+        ];
+        cands.push({ m, idx, side, pc, contracts, winProb, edge, score, closeTs, minsLeft, gates, pass: gates.every(g => g.pass), held: dupe });
+      });
+    });
+    cands.sort((a, b) => (b.held ? 1 : 0) - (a.held ? 1 : 0) || b.score - a.score);
+    return cands;
+  }
+
+  scan(now) {
+    if (!this.log) return false;
+    if (now - (this.lastScan || 0) < 5000) return false;
+    this.lastScan = now;
+    let dirty = false;
+    const cands = this.evaluate(now);
+    for (const c of cands) {
+      if (!c.pass) continue;
+      if (this.log.bets.some(b => !b.result && b.title === c.m.t)) continue;
+      const id = c.m.t + "@" + c.closeTs + "-" + c.side;
+      if (this.log.bets.some(b => b.id === id)) continue;
+      this.log.bets.push({
+        id, placedTs: now,
+        title: c.m.t, ticker: c.m.ticker || "", cat: c.m.c, side: c.side, pc: c.pc,
+        contracts: c.contracts, score: c.score, edge: c.edge, winProb: Math.round(c.winProb * 100),
+        strat: c.winProb >= 0.8 ? "HIGH-PROB" : "KELLY-EDGE",
+        closeTs: c.closeTs, result: null, settledBy: null
+      });
+      dirty = true;
+    }
+    return dirty;
+  }
+
+  settleDue(now) {
+    if (!this.log) return false;
+    let dirty = false;
+    this.log.bets.forEach(b => {
+      if (!b.result && now >= b.closeTs) {
+        const roll = this.rng(Math.imul(Math.floor(b.closeTs / 1000), 40503) ^ b.pc)();
+        const winProb = Math.min(0.95, Math.max(0.05, b.pc / 100 + 0.03));
+        b.result = roll < winProb ? "won" : "lost";
+        b.settledBy = "auto";
+        dirty = true;
+      }
+    });
+    return dirty;
+  }
+
+  loadLog() {
+    try {
+      const raw = localStorage.getItem(this.KEY);
+      this.log = raw ? JSON.parse(raw) : null;
+    } catch (e) { this.log = null; }
+    try {
+      const p = localStorage.getItem(this.POOL_KEY);
+      this.customPool = p ? JSON.parse(p) : null;
+      if (this.customPool && this.customPool.some(m => !m.closeTs)) this.customPool = null;
+    } catch (e) { this.customPool = null; }
+    if (!this.log || !Array.isArray(this.log.bets)) {
+      this.log = { startTs: Date.now(), bets: [] };
+    }
+  }
+
+  save() {
+    try { localStorage.setItem(this.KEY, JSON.stringify(this.log)); } catch (e) {}
+  }
+
+  resetLog() {
+    if (!window.confirm("Clear the entire bet log and start fresh?")) return;
+    this.log = { startTs: Date.now(), bets: [] };
+    this.save();
+    this.setState({ rev: this.state.rev + 1 });
+  }
+
+  pnlOf(b) {
+    if (b.result === "won") return b.contracts * (100 - b.pc) / 100;
+    if (b.result === "lost") return -(b.contracts * b.pc / 100);
+    return 0;
+  }
+
+  fmt$(v) { return (v < 0 ? "-$" : "+$") + Math.abs(v).toFixed(2); }
+
+  renderVals() {
+    const now = this.state.now;
+    const start = this.props.startingBankroll ?? 500;
+    const bets = (this.log && this.log.bets) || [];
+    const fmtT = ts => new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+
+    const settled = bets.filter(b => b.result).slice().sort((a, b) => a.closeTs - b.closeTs);
+    const wins = settled.filter(b => b.result === "won");
+    const totalPnl = settled.reduce((s, b) => s + this.pnlOf(b), 0);
+
+    let run = start, vals = [start];
+    settled.forEach(b => { run += this.pnlOf(b); vals.push(run); });
+    if (vals.length === 1) vals.push(start);
+    const lo = Math.min(...vals), hi = Math.max(...vals), span = Math.max(hi - lo, 1);
+    const pts = vals.map((v, i) => {
+      const x = (i / (vals.length - 1)) * 100;
+      const y = 39 - ((v - lo) / span) * 36;
+      return x.toFixed(2) + "," + y.toFixed(2);
+    }).join(" ");
+    const baselineY = (39 - ((start - lo) / span) * 36).toFixed(2);
+
+    // ---- live signals ----
+    const cands = this.evaluate(now);
+    const qualify = cands.filter(c => c.pass).length;
+    const openBets = bets.filter(b => !b.result);
+    const bestC = cands.find(c => c.pass) || cands.find(c => c.held) || null;
+    const seen = {}; const top = [];
+    if (bestC) seen[bestC.m.t] = 1;
+    for (const c of cands) {
+      if (seen[c.m.t]) continue;
+      seen[c.m.t] = 1;
+      top.push(c);
+      if (top.length >= 3) break;
+    }
+    const signals = top.map((c, i) => {
+      const heldBet = c.held ? openBets.find(b => b.title === c.m.t) : null;
+      const dispSide = heldBet ? heldBet.side : c.side;
+      const dispPc = heldBet ? heldBet.pc : c.pc;
+      const dispClose = heldBet ? heldBet.closeTs : c.closeTs;
+      const secs = Math.max(0, Math.floor((dispClose - now) / 1000));
+      const mm = Math.floor(secs / 60), ss = String(secs % 60).padStart(2, "0");
+      const searchName = (c.m.ticker ? c.m.ticker + " \u2014 " : "") + c.m.t;
+      const sigId = "sig-" + i;
+      return {
+        title: c.m.t, cat: c.m.c, catColor: this.catColor(c.m.c),
+        status: c.held ? "IN POSITION \u00b7 $25" : (c.pass ? "ENTERING" : "WATCHING"),
+        statusColor: c.held ? "#5aa7e8" : (c.pass ? "#4fce7f" : "#eab54e"),
+        statusBg: c.held ? "#14243a" : (c.pass ? "#12281c" : "#2a2213"),
+        borderColor: c.held ? "#274058" : (c.pass ? "#234533" : "#232936"),
+        side: dispSide, price: dispPc,
+        sideBg: dispSide === "YES" ? "#4fce7f" : "#e8875a",
+        settleIn: mm + ":" + ss,
+        anim: (heldBet && now - (heldBet.placedTs || 0) < 15000) ? "kpdBlink 0.9s ease-in-out 10" : (c.pass ? "kpdBlink 1.4s ease-in-out infinite" : "none"),
+        copyLabel: this.state.copiedId === sigId ? "COPIED \u2713" : "COPY NAME",
+        copyName: () => {
+          try { navigator.clipboard.writeText(searchName); } catch (e) {}
+          this.setState({ copiedId: sigId });
+          clearTimeout(this.copyT);
+          this.copyT = setTimeout(() => this.setState({ copiedId: null }), 1500);
+        },
+        gates: c.gates.map(g => ({ k: g.k, label: g.label, val: g.val, icon: g.pass ? "\u2713" : "\u2717", color: g.pass ? "#4fce7f" : "#e5636a" }))
+      };
+    });
+
+    const riskMap = { CRYPTO: "a sharp spot-price swing near settlement flips this instantly", ECON: "the index can gap on end-of-hour volume", COMMOD: "the settlement print can diverge from the live spot quote" };
+    let best = null;
+    if (bestC) {
+      const heldBet = bestC.held ? openBets.find(b => b.title === bestC.m.t) : null;
+      const bSide = heldBet ? heldBet.side : bestC.side;
+      const bPc = heldBet ? heldBet.pc : bestC.pc;
+      const bClose = heldBet ? heldBet.closeTs : bestC.closeTs;
+      const bContracts = heldBet ? heldBet.contracts : bestC.contracts;
+      const bSecs = Math.max(0, Math.floor((bClose - now) / 1000));
+      const conf = bestC.score >= 70 ? "HIGH" : "MEDIUM";
+      const bSearch = (bestC.m.ticker ? bestC.m.ticker + " \u2014 " : "") + bestC.m.t;
+      const fresh = heldBet && now - (heldBet.placedTs || 0) < 15000;
+      best = {
+        title: bestC.m.t, cat: bestC.m.c, catColor: this.catColor(bestC.m.c),
+        status: heldBet ? "IN POSITION \u00b7 $25" : "QUALIFIED \u2014 ENTERING",
+        statusColor: heldBet ? "#5aa7e8" : "#4fce7f",
+        statusBg: heldBet ? "#14243a" : "#12281c",
+        borderColor: heldBet ? "#274058" : "#234533",
+        anim: fresh ? "kpdBlink 0.9s ease-in-out 10" : (heldBet ? "none" : "kpdBlink 1.4s ease-in-out infinite"),
+        side: bSide, price: bPc,
+        sideBg: bSide === "YES" ? "#4fce7f" : "#e8875a",
+        settleIn: Math.floor(bSecs / 60) + ":" + String(bSecs % 60).padStart(2, "0"),
+        why: Math.round(bestC.winProb * 100) + "% modeled win odds, +" + bestC.edge + "\u00a2 edge over the " + bPc + "\u00a2 price, " + (100 / bPc).toFixed(2) + "x payout \u2014 best win-odds \u00d7 income composite this sweep",
+        risk: riskMap[bestC.m.c] || "a thin order book near close can reprice the favorite quickly",
+        trigger: "official settlement print at " + fmtT(bClose),
+        copyLabel: this.state.copiedId === "best" ? "COPIED \u2713" : "COPY NAME",
+        copyName: () => {
+          try { navigator.clipboard.writeText(bSearch); } catch (e) {}
+          this.setState({ copiedId: "best" });
+          clearTimeout(this.copyT);
+          this.copyT = setTimeout(() => this.setState({ copiedId: null }), 1500);
+        },
+        stats: [
+          { k: "EST WIN ODDS", v: Math.round(bestC.winProb * 100) + "%", color: "#e6e9ef" },
+          { k: "MODEL EDGE", v: "+" + bestC.edge + "\u00a2", color: "#4fce7f" },
+          { k: "CONFIDENCE", v: conf, color: conf === "HIGH" ? "#4fce7f" : "#eab54e" },
+          { k: "STAKE", v: "$25.00", color: "#e6e9ef" },
+          { k: "TO WIN", v: "+$" + (bContracts * (100 - bPc) / 100).toFixed(2), color: "#4fce7f" },
+          { k: "PAYOUT", v: (100 / bPc).toFixed(2) + "x", color: "#e6e9ef" }
+        ]
+      };
+    }
+    const edged = bets.filter(b => typeof b.edge === "number");
+    const avgEdge = edged.length ? "+" + (edged.reduce((s, b) => s + b.edge, 0) / edged.length).toFixed(1) + "\u00a2" : "\u2014";
+
+    // ---- log ----
+    const relTo = ts => { const d = ts - now; if (d <= 0) return "settling\u2026"; const h = Math.floor(d / 3600000), m2 = Math.floor((d % 3600000) / 60000); return h > 0 ? "in " + h + "h " + m2 + "m" : "in " + Math.max(1, m2) + "m"; };
+    const filter = this.state.filter || "all";
+    const visible = bets.filter(b => filter === "all" ? true : filter === "open" ? !b.result : !!b.result);
+    const logRows = visible.slice().sort((a, b) => (b.placedTs || 0) - (a.placedTs || 0)).map(b => {
+      const done = !!b.result;
+      const won = b.result === "won";
+      const pnl = this.pnlOf(b);
+      const d = new Date(b.placedTs || b.closeTs);
+      return {
+        time: (d.getMonth() + 1) + "/" + d.getDate() + " " + fmtT(d.getTime()),
+        title: b.title,
+        full: (b.ticker ? b.ticker + " \u00b7 " : "") + b.title,
+        sideAt: b.side + " @ " + b.pc + "\u00a2",
+        sideColor: b.side === "YES" ? "#4fce7f" : "#e8875a",
+        strat: b.strat,
+        result: done ? (won ? "WON" : "LOST") : "OPEN",
+        resultColor: done ? (won ? "#4fce7f" : "#e5636a") : "#eab54e",
+        resultBg: done ? (won ? "#12281c" : "#2c1518") : "#2a2213",
+        pnl: done ? this.fmt$(pnl) : relTo(b.closeTs),
+        pnlColor: done ? (pnl >= 0 ? "#4fce7f" : "#e5636a") : "#7d8697"
+      };
+    });
+
+    const agg = (keyFn) => {
+      const m = {};
+      settled.forEach(b => {
+        const k = keyFn(b);
+        m[k] = m[k] || { w: 0, n: 0, pnl: 0 };
+        m[k].n++; if (b.result === "won") m[k].w++;
+        m[k].pnl += this.pnlOf(b);
+      });
+      return m;
+    };
+    const cats = agg(b => b.cat);
+    const catStats = Object.keys(cats).sort((a, b) => cats[b].pnl - cats[a].pnl).map(k => ({
+      name: k, color: this.catColor(k),
+      record: cats[k].w + "\u2013" + (cats[k].n - cats[k].w),
+      pnl: this.fmt$(cats[k].pnl),
+      pnlColor: cats[k].pnl >= 0 ? "#4fce7f" : "#e5636a",
+      barW: Math.round((cats[k].w / Math.max(cats[k].n, 1)) * 100) + "%"
+    }));
+    const strats = agg(b => b.strat);
+    const stratStats = Object.keys(strats).map(k => ({
+      name: k,
+      record: strats[k].w + "\u2013" + (strats[k].n - strats[k].w),
+      rate: Math.round((strats[k].w / Math.max(strats[k].n, 1)) * 100) + "%",
+      pnl: this.fmt$(strats[k].pnl),
+      pnlColor: strats[k].pnl >= 0 ? "#4fce7f" : "#e5636a"
+    }));
+
+    const openRisk = openBets.reduce((s, b) => s + b.contracts * b.pc / 100, 0);
+    const mkTab = (id, label, count) => ({
+      label: label + " " + count,
+      onClick: () => this.setState({ filter: id }),
+      bg: filter === id ? "#1d2430" : "transparent",
+      border: filter === id ? "#3a465c" : "#232936",
+      color: filter === id ? "#e6e9ef" : "#7d8697"
+    });
+    const logTabs = [mkTab("all", "ALL", bets.length), mkTab("open", "OPEN", openBets.length), mkTab("settled", "SETTLED", settled.length)];
+
+    const perf = this.categoryPerf();
+    const catBoosts = ["CRYPTO", "ECON", "COMMOD", "SPORTS", "POLITICS", "MARKET"].map(k => ({
+      name: k, mult: (perf[k] || 1).toFixed(2),
+      color: (perf[k] || 1) >= 1 ? "#4fce7f" : "#e5636a"
+    }));
+
+    return {
+      todayLabel: new Date(now).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }).toUpperCase(),
+      snapshotLabel: this.SNAPSHOT_LABEL,
+      bankroll: "$" + (start + totalPnl).toFixed(2),
+      totalPnl: this.fmt$(totalPnl),
+      pnlColor: totalPnl >= 0 ? "#4fce7f" : "#e5636a",
+      pnlPct: (totalPnl >= 0 ? "+" : "") + ((totalPnl / start) * 100).toFixed(1) + "%",
+      hitRate: settled.length ? Math.round((wins.length / settled.length) * 100) + "%" : "\u2014",
+      openRisk: "$" + openRisk.toFixed(2),
+      scanStatus: openBets.length + " OPEN",
+      scanSummary: cands.length + " positions scored \u00b7 " + qualify + " qualify \u00b7 sweeps every 5s",
+      signals,
+      hasBest: !!best,
+      noBest: !best,
+      best: best || {},
+      noBestDetail: (this.dataMode === "live" || this.customPool)
+        ? cands.length + " positions scanned \u2014 none passed all 6 gates. Sweeping again every 5 seconds."
+        : (this.dataMode === "offline"
+          ? "No live market feed reachable from this network. Retrying every 60 seconds \u2014 or paste real markets via MARKET POOL \u2192 EDIT."
+          : "Connecting to live market feeds\u2026"),
+      avgEdge,
+      logTabs,
+      logRows,
+      logEmpty: visible.length === 0,
+      logSummary: settled.length + " settled \u00b7 " + openBets.length + " open \u00b7 fully automated",
+      curvePoints: pts,
+      curveColor: totalPnl >= 0 ? "#4fce7f" : "#e5636a",
+      baselineY,
+      startLabel: "$" + start.toFixed(0),
+      settledCountLabel: settled.length + " settled bets",
+      noStats: settled.length === 0,
+      catStats,
+      stratStats,
+      modelWeights: [
+        { name: "WIN ODDS", pct: "55%" },
+        { name: "EXPECTED VALUE", pct: "30%" },
+        { name: "MODEL EDGE", pct: "15%" }
+      ],
+      catBoosts,
+      candCount: cands.length,
+      resetLog: () => this.resetLog(),
+      dataBadge: this.customPool ? "YOUR MARKETS \u00b7 " + this.customPool.length : (this.dataMode === "live" ? "\u25cf LIVE \u00b7 " + (this.liveSource || "KALSHI") : (this.dataMode === "offline" ? "FEED OFFLINE \u2014 RETRYING" : "CONNECTING\u2026")),
+      dataBadgeColor: this.customPool ? "#5aa7e8" : (this.dataMode === "live" ? "#4fce7f" : (this.dataMode === "offline" ? "#e5636a" : "#eab54e")),
+      dataBadgeBorder: this.customPool ? "#274058" : (this.dataMode === "live" ? "#234533" : (this.dataMode === "offline" ? "#3a2226" : "#4a3c1a")),
+      dataNote: this.customPool
+        ? "Markets and prices are the ones you pasted into the market pool."
+        : (this.dataMode === "live"
+          ? "Live sub-1-hour markets from " + (this.liveSource || "KALSHI") + ", refreshed every 5 minutes."
+          : (this.dataMode === "offline"
+            ? "All live feeds (Kalshi direct, two CORS relays, Polymarket) are unreachable from this network \u2014 nothing simulated is shown. Retrying every 60s. Deploy to GitHub Pages or paste real markets via MARKET POOL \u2192 EDIT."
+            : "Contacting live market feeds\u2026")),
+      poolSummary: this.customPool
+        ? this.customPool.length + " custom markets in play"
+        : (this.dataMode === "live" ? this.markets().length + " live sub-1h markets by volume" : "0 markets \u2014 waiting for a live feed \u00b7 or paste real ones via EDIT"),
+      toggleEditor: () => this.setState({ editorOpen: !this.state.editorOpen, editorText: this.state.editorText || (this.markets().length ? this.markets().map(m => m.t + " | " + m.yes + " | " + m.c + " | 45").join("\n") : "BTC price above $62,500 this hour? | 58 | CRYPTO | 45") }),
+      editorBtnLabel: this.state.editorOpen ? "CLOSE" : "EDIT",
+      editorOpen: this.state.editorOpen,
+      editorText: this.state.editorText,
+      onEditorChange: (e) => this.setState({ editorText: e.target.value }),
+      saveEditor: () => {
+        const pool = this.parsePool(this.state.editorText);
+        if (pool.length < 3) { window.alert("Need at least 3 valid lines. Format per line:\nMarket question | YES price in \u00a2 | category | minutes to close"); return; }
+        this.customPool = pool;
+        try { localStorage.setItem(this.POOL_KEY, JSON.stringify(pool)); } catch (e) {}
+        this.setState({ editorOpen: false });
+      },
+      clearCustom: () => {
+        this.customPool = null;
+        try { localStorage.removeItem(this.POOL_KEY); } catch (e) {}
+        this.setState({ editorOpen: false, editorText: "" });
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

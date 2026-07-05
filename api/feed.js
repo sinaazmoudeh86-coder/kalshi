@@ -125,6 +125,22 @@ async function sweep() {
     pages++;
   } while (cursor && pages < 12 && raw.length < 10000 && Date.now() - t0 < 30000);
   diag.push("window:" + raw.length + "/" + pages + "pg");
+  // FAST-SERIES LANE: 15-min/hourly crypto + daily index series settle constantly
+  // (the desk's main sub-1h supply) but can be missed when the window query caps
+  // out on pagination — probe them directly and merge (shape() dedupes by ticker).
+  const fastSeries = ["KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M", "KXBTCD", "KXETHD", "KXBTC", "KXETH", "KXINXD", "KXNASDAQ100D"];
+  let fastN = 0;
+  for (const s of fastSeries) {
+    if (Date.now() - t0 > 45000) break;
+    try {
+      const j = await kfetch("/markets?limit=100&status=open&series_ticker=" + s, 8000, 1);
+      const ms = j.markets || [];
+      fastN += ms.length;
+      raw = raw.concat(ms);
+    } catch (e) {}
+    await sleep(250);
+  }
+  diag.push("fast-series:" + fastN);
   const evMap = await eventCats(diag);
   const pool = shape(raw, evMap);
   const nSp = pool.filter(m => m.c === "SPORTS").length;

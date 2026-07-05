@@ -2717,7 +2717,7 @@ class Component extends DCLogic {
         const volLabel = vol >= 1000000 ? (vol / 1000000).toFixed(1) + "M" : vol >= 1000 ? Math.round(vol / 1000) + "k" : String(vol);
         const gates = [
           { k: "T-MINUS", label: "settles within " + (this.horizonMins() >= 60 ? (this.horizonMins() / 60) + "h" : this.horizonMins() + "m"), pass: minsLeft >= 5 && minsLeft <= this.horizonMins(), val: minsLeft >= 60 ? (minsLeft / 60).toFixed(1) + "h" : Math.max(0, Math.round(minsLeft)) + "m" },
-          { k: "WIN ODDS", label: "price in 70\u2013" + (dl.bandMax || 85) + "\u00a2 high-probability band (fee-viable)", pass: pc >= 70 && pc <= (dl.bandMax || 85), val: pc + "\u00a2" },
+          { k: "WIN ODDS", label: "price in 70\u2013" + (dl.bandMax || 90) + "\u00a2 band \u00b7 86\u00a2+ self-calibrates from results", pass: pc >= 70 && pc <= (dl.bandMax || 90), val: pc + "\u00a2" },
           { k: "LIQUIDITY", label: "24h volume \u2265 $" + volReq + (volReq > 100 ? " (quiet hours)" : ""), pass: vol >= volReq, val: "$" + volLabel },
           { k: "NET EDGE", label: "signal \u2265 +" + reqE + "\u00a2 net of fees (learned + domain)", pass: netEdge >= reqE, val: (netEdge >= 0 ? "+" : "") + netEdge + "\u00a2" },
           { k: "SCORE", label: "composite \u00d7 category form \u2265 60", pass: score >= 60, val: String(score) },
@@ -3714,7 +3714,7 @@ class Component extends DCLogic {
         this.setState({ rev: this.state.rev + 1 });
       },
       stopLive: () => this.disarm("manual STOP"),
-      buildTag: "BUILD v54",
+      buildTag: "BUILD v55",
       events: (this.events || []).map(e => {
         const d = new Date(e.ts);
         const p2 = n => String(n).padStart(2, "0");

@@ -97,6 +97,21 @@ module.exports = async (req, res) => {
       }
       return res.status(200).json(out);
     }
+    if (req.method === "GET" && req.url && req.url.includes("action=testorder")) {
+      const probe = {
+        ticker: "KXFAKEDIAG-00JAN01-T1",
+        client_order_id: crypto.randomUUID(),
+        action: "buy", side: "yes", count: 1, type: "limit", yes_price: 1
+      };
+      const out = {};
+      for (const base of BASES) {
+        try {
+          const r = await kalshiAt(base, "POST", "/trade-api/v2/portfolio/orders", probe);
+          out[base] = { status: r.status, body: JSON.stringify(r.json).slice(0, 300) };
+        } catch (e) { out[base] = { status: 0, body: String((e && e.message) || e) }; }
+      }
+      return res.status(200).json(out);
+    }
     if (req.method === "GET") {
       const bal = await kalshi("GET", "/trade-api/v2/portfolio/balance");
       if (bal.status >= 200 && bal.status < 300) {

@@ -2068,7 +2068,7 @@ class Component extends DCLogic {
           yes, closeTs, vol, _bid: bid, _ask: ask
         };
       })
-      .filter(m => m.yes >= 5 && m.yes <= 95 && m.closeTs - nowT > 5 * 60000 && m.closeTs - nowT < 75 * 60000);
+      .filter(m => m.yes >= 5 && m.yes <= 95 && m.closeTs - nowT > 4 * 60000 && m.closeTs - nowT < 185 * 60000);
     // primary: real traded volume; fallback: live two-sided quotes
     let pool = mapped.filter(m => m.vol > 50);
     if (pool.length < 3) pool = mapped.filter(m => m._bid > 0 && m._ask < 100);
@@ -2092,14 +2092,14 @@ class Component extends DCLogic {
           vol: parseFloat(m.volume24hr) || 0
         };
       })
-      .filter(m => m.t && m.yes >= 5 && m.yes <= 95 && m.closeTs - nowT > 5 * 60000 && m.closeTs - nowT < 75 * 60000)
+      .filter(m => m.t && m.yes >= 5 && m.yes <= 95 && m.closeTs - nowT > 4 * 60000 && m.closeTs - nowT < 185 * 60000)
       .slice(0, 40);
   }
 
   async fetchLive() {
     const KBASE = "https://api.elections.kalshi.com/trade-api/v2";
     const nowS = Math.floor(Date.now() / 1000);
-    const W = "&min_close_ts=" + (nowS + 300) + "&max_close_ts=" + (nowS + 4500);
+    const W = "&min_close_ts=" + (nowS + 240) + "&max_close_ts=" + (nowS + 10800);
     const Q1 = "/markets?limit=1000&status=open" + W;
     const Q2 = "/markets?limit=1000&status=open";
     const diag = [];
@@ -2117,14 +2117,37 @@ class Component extends DCLogic {
           pool = this.mapKalshi({ markets: all });
           if (pool.length >= 12) break;
         } while (cursor && pages < 8);
-        diag.push(name + ": " + total + " markets/" + pages + "pg, " + pool.length + " tradable sub-1h");
-        if (pool.length >= 3) return { pool, base: wrap ? null : base, name };
+        let ecNote = "";
+        if (all.length) {
+          const ec = Math.min.apply(null, all.map(m => new Date(m.close_time).getTime() || Infinity));
+          if (isFinite(ec)) ecNote = ", first close in " + Math.round((ec - Date.now()) / 60000) + "m";
+        }
+        diag.push(name + ": " + total + " markets/" + pages + "pg, " + pool.length + " tradable" + ecNote);
+        if (pool.length >= 1) return { pool, base: wrap ? null : base, name };
       } catch (e) {
         diag.push(name + ": " + (e && e.message ? e.message : "failed"));
       }
       return null;
     };
+    const trySeries = async (base, wrap) => {
+      const series = ["KXBTCD", "KXETHD", "KXBTC", "KXETH", "KXXRPD", "KXSOLD", "KXINX", "KXINXD", "KXINXU", "KXNASDAQ100", "KXNASDAQ100D", "KXNASDAQ100U", "KXBTCUP", "KXETHUP"];
+      try {
+        const results = await Promise.all(series.map(s => {
+          const u0 = base + "/markets?limit=100&status=open&series_ticker=" + s;
+          return this.fetchJson(wrap ? wrap(u0) : u0, 12000).catch(() => null);
+        }));
+        let all = [], hits = [];
+        results.forEach((j, i) => {
+          if (j && j.markets && j.markets.length) { all = all.concat(j.markets); hits.push(series[i] + "(" + j.markets.length + ")"); }
+        });
+        const pool = this.mapKalshi({ markets: all });
+        diag.push("KALSHI SERIES: " + (hits.length ? hits.join(" ") : "no series hits") + " \u2192 " + pool.length + " tradable");
+        if (pool.length >= 1) return { pool, base: wrap ? null : base, name: "KALSHI" };
+      } catch (e) { diag.push("KALSHI SERIES: " + (e && e.message ? e.message : "failed")); }
+      return null;
+    };
     const attempts = [
+      () => trySeries("/api/kalshi"),
       () => tryKalshi("KALSHI PROXY", "/api/kalshi", Q1),
       () => tryKalshi("KALSHI PROXY (wide)", "/api/kalshi", Q2),
       () => tryKalshi("KALSHI DIRECT", KBASE, Q1),
@@ -2134,7 +2157,7 @@ class Component extends DCLogic {
         try {
           const pool = await this.fetchPolymarket();
           diag.push("POLYMARKET: " + pool.length + " tradable sub-1h");
-          if (pool.length >= 3) return { pool, base: null, name: "POLYMARKET" };
+          if (pool.length >= 1) return { pool, base: null, name: "POLYMARKET" };
         } catch (e) { diag.push("POLYMARKET: " + (e && e.message ? e.message : "failed")); }
         return null;
       }
@@ -2151,11 +2174,18 @@ class Component extends DCLogic {
       this.liveSource = winner.name;
       this.kalshiBase = winner.base;
       clearTimeout(this.refetchT);
-      this.refetchT = setTimeout(() => this.fetchLive(), 300000);
+      this.refetchT = setTimeout(() => this.fetchLive(), 120000);
     } else {
-      this.dataMode = "offline";
+      // refresh came back empty/failed: keep serving the cached pool if it is still valid
+      this.livePool = (this.livePool || []).filter(m => m.closeTs > Date.now() + 4 * 60000);
+      if (this.livePool.length) {
+        this.dataMode = "live";
+        diag.push("refresh thin \u2014 serving cached pool (" + this.livePool.length + "), retrying in 30s");
+      } else {
+        this.dataMode = "offline";
+      }
       clearTimeout(this.refetchT);
-      this.refetchT = setTimeout(() => this.fetchLive(), 60000);
+      this.refetchT = setTimeout(() => this.fetchLive(), 30000);
     }
     this.setState({ rev: this.state.rev + 1 });
   }
@@ -2561,7 +2591,7 @@ class Component extends DCLogic {
       catBoosts,
       candCount: cands.length,
       resetLog: () => this.resetLog(),
-      buildTag: "BUILD v8",
+      buildTag: "BUILD v10",
       feedDiag: (this.feedDiag || ["feed check pending\u2026"]).map(l => ({ line: l })),
       dataBadge: this.customPool ? "YOUR MARKETS \u00b7 " + this.customPool.length : (this.dataMode === "live" ? "\u25cf LIVE \u00b7 " + (this.liveSource || "KALSHI") : (this.dataMode === "offline" ? "FEED OFFLINE \u2014 RETRYING" : "CONNECTING\u2026")),
       dataBadgeColor: this.customPool ? "#5aa7e8" : (this.dataMode === "live" ? "#4fce7f" : (this.dataMode === "offline" ? "#e5636a" : "#eab54e")),

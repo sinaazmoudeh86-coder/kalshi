@@ -1,9 +1,9 @@
-# Kalshi Live Desk — DEPLOYMENT (BUILD v81 · Kalshi-only, rotating-ladder feed)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v83 · Kalshi-only, rotating-ladder feed)
 
 3 files + this README. The repo root must look exactly like this:
 
 ```
-index.html      <- the dashboard (header must say BUILD v81 after deploy)
+index.html      <- the dashboard (header must say BUILD v83 after deploy)
 vercel.json     <- proxies /api/kalshi/* to Kalshi's market-data API + feed budget
 api/
   trade.js      <- signed order placement + portfolio sync (needs env vars)
@@ -17,9 +17,32 @@ api/
    inside a folder named `api`.
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v81**.
+4. Check the header — it must say **BUILD v83**.
 
-## What v81 fixes
+## What v83 adds — self-contradiction + payoff-asymmetry protection
+
+- **REVERSAL gate (9th gate)**: the desk can no longer bet the opposite direction
+  on the same underlying within 6h of its own bet (Jul 5: NO on BTC ≥$62,800 at
+  2am, then YES on BTC ≥$62,600 at 4:35am — one of those had to be wrong, and at
+  favorite prices one loss ≈ 6–9 wins).
+- **ASYMMETRY BRAKE**: if the last 24h of settled bets (≥6) win under 50%, all
+  entries ≥80¢ are blocked — the record is proving those favorites aren't winning
+  at favorite rates, and each one risks a ~7:1 loss.
+- **Whipsaw cooldown 1h → 3h** after a loss on a series.
+
+## What v82 fixed — crypto discipline (the Jul 5 loss run)
+
+- **Near-strike gamma zone blocked**: crypto favorites under 90¢ with <1h left are
+  priced there because the strike is within ordinary tape reach — every Jul 5 loss
+  lived in that zone. Now requires a ≥90¢ cushion, or <90¢ only with a dead-calm
+  (≤3¢/10m), aligned, actually-observed tape.
+- **Adjacent strikes = one risk**: never two positions on the same underlying +
+  settlement (the 5:14 PM double on $63,400/$63,500 can't happen again), and max
+  1 concurrent crypto position overall.
+- **90-min crypto stand-down after ANY crypto loss** (the 3-strike cooldown never
+  tripped because losses were spaced hours apart).
+
+## What v81 fixed
 
 - **`post only cross` rejections**: quotes are up to ~60s stale, so on fast
   markets a maker order priced safely can land on the moved ask. `api/trade.js`

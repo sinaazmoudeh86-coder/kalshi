@@ -3507,8 +3507,11 @@ class Component extends DCLogic {
         const pvKk = (this.liveStatus && this.liveStatus.portfolio_value != null && liveCash != null) ? Math.max(0, this.liveStatus.portfolio_value / 100 - liveCash) : null;
         const liveRisk = pvKk != null ? pvKk : (this.atRisk != null ? (this.atRisk + this.reviewRiskExtra()) : ((this.log && this.log.bets) || []).filter(b => b.live && !b.result).reduce((s, b) => s + b.contracts * b.pc / 100, 0));
         const lastS = pvWin[pvWin.length - 1];
-        const curC = liveCash != null ? liveCash : (lastS ? lastS.c : (start + totalPnl));
-        const curR = liveCash != null ? liveRisk : (lastS ? lastS.r : 0);
+        // disconnected/paper fallback must reconcile with the log: value = bankroll,
+        // in-bets = open cost, cash = bankroll - open cost
+        const openCost = ((this.log && this.log.bets) || []).filter(b => !b.result).reduce((s2, b) => s2 + b.contracts * b.pc / 100, 0);
+        const curC = liveCash != null ? liveCash : Math.max(0, (start + totalPnl) - openCost);
+        const curR = liveCash != null ? liveRisk : openCost;
         const out = {
           pvHas: pvWin.length >= 2,
           pvEmpty: pvWin.length < 2,

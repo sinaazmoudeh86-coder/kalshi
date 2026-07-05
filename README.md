@@ -33,6 +33,27 @@ A single-file, real-time paper-trading dashboard. No build step, no server code,
 - All state lives in the browser (localStorage): it only runs while a tab is
   open, and the log is per-browser/per-device.
 
+## Live trading (optional — real money)
+
+The `api/trade.js` serverless function places real Kalshi orders, signed
+server-side so your private key never reaches the browser.
+
+1. On kalshi.com → Settings → API: create an API key. You get a key ID and
+   an RSA private key file.
+2. Vercel → Project → Settings → Environment Variables, add:
+   - `KALSHI_ACCESS_KEY` — the key ID
+   - `KALSHI_PRIVATE_KEY` — paste the full PEM (or base64 of it)
+   - `TRADE_SECRET` — any passphrase you choose
+3. Redeploy. In the dashboard, LIVE TRADING panel → ARM → enter your
+   TRADE_SECRET. From then on, every qualified signal also fires a real
+   $25 limit-at-ask order.
+4. Guardrails: auto-halt at −$500 realized loss per day, $30/order server
+   cap, STOP button disarms instantly, and `TRADING_HALTED=true` env var
+   is a server-side kill switch.
+
+Real trading risks real losses. The model's edge is heuristic — validate
+your paper hit rate over hundreds of bets before arming.
+
 ## Notes
 
 - Settlement: for Kalshi-fed bets the desk fetches the market's REAL result at

@@ -1716,6 +1716,23 @@
 
 <div style="min-height: 100vh; background: #0d0f13; color: #e6e9ef; font-family: Helvetica, Arial, sans-serif; padding: 0 0 40px 0;">
 
+  <!-- Password gate -->
+  <sc-if value="{{ locked }}" hint-placeholder-val="{{ false }}">
+    <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;">
+      <div style="background: #14181f; border: 1px solid #232936; border-radius: 8px; padding: 32px; width: 320px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);">
+        <div style="font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 15px; letter-spacing: 0.08em; color: #e6e9ef;">KALSHI PAPER DESK</div>
+        <div style="font-size: 11px; color: #7d8697;">Enter password to continue</div>
+        <input type="password" value="{{ pw }}" onChange="{{ onPwChange }}" onKeyDown="{{ pwKey }}" autoFocus="{{ true }}" placeholder="Password" style="background: #0d0f13; border: 1px solid #2a303c; border-radius: 4px; color: #e6e9ef; font-family: 'IBM Plex Mono', monospace; font-size: 14px; padding: 10px 12px; outline: none;" style-focus="border-color: #3a465c;"></input>
+        <button onClick="{{ tryUnlock }}" style="background: #4fce7f; border: 1px solid #4fce7f; border-radius: 4px; color: #0d0f13; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; padding: 10px; cursor: pointer;" style-hover="background: #5fdd8e;">UNLOCK</button>
+        <sc-if value="{{ pwErr }}" hint-placeholder-val="{{ false }}">
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #e5636a;">Wrong password — try again.</div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ unlocked }}" hint-placeholder-val="{{ true }}">
+
   <!-- ===== Header bar ===== -->
   <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 28px; border-bottom: 1px solid #20242e; background: #101318;">
     <div style="display: flex; align-items: baseline; gap: 14px;">
@@ -1757,6 +1774,9 @@
         </div>
       </div>
       <button onClick="{{ resetLog }}" style="background: none; border: 1px solid #2a303c; border-radius: 3px; color: #7d8697; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.08em; padding: 6px 12px; cursor: pointer;" style-hover="border-color: #e5636a; color: #e5636a;">RESET LOG</button>
+      <sc-if value="{{ liveArmed }}" hint-placeholder-val="{{ false }}">
+        <button onClick="{{ stopLive }}" style="background: #e5636a; border: 1px solid #e5636a; border-radius: 3px; color: #0d0f13; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; padding: 8px 14px; cursor: pointer; animation: kpdPulse 2s ease-in-out infinite;">■ STOP LIVE</button>
+      </sc-if>
     </div>
   </div>
 
@@ -1994,6 +2014,33 @@
         </div>
       </div>
 
+      <!-- Live trading -->
+      <div style="background: #14181f; border: 1px solid #232936; border-radius: 6px; padding: 16px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+          <div style="font-size: 11px; letter-spacing: 0.12em; color: #aab2c0; font-weight: 700;">LIVE TRADING</div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; color: {{ liveChipColor }}; background: {{ liveChipBg }}; border-radius: 3px; padding: 2px 8px;">{{ liveChip }}</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+          <div style="background: #10141a; border: 1px solid #1d232e; border-radius: 4px; padding: 10px;">
+            <div style="font-size: 9px; letter-spacing: 0.08em; color: #7d8697; margin-bottom: 4px;">KALSHI BALANCE</div>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600; color: #e6e9ef;">{{ liveBalance }}</div>
+          </div>
+          <div style="background: #10141a; border: 1px solid #1d232e; border-radius: 4px; padding: 10px;">
+            <div style="font-size: 9px; letter-spacing: 0.08em; color: #7d8697; margin-bottom: 4px;">TODAY (LIVE BETS)</div>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600; color: {{ livePnlTodayColor }};">{{ livePnlTodayLabel }}</div>
+          </div>
+        </div>
+        <sc-if value="{{ liveDisarmed }}" hint-placeholder-val="{{ true }}">
+          <button onClick="{{ armLive }}" style="width: 100%; background: none; border: 1px solid #3a465c; border-radius: 4px; color: #e6e9ef; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; padding: 10px; cursor: pointer;" style-hover="background: #1d2430;">ARM LIVE TRADING</button>
+          <div style="font-size: 10px; color: #5c6474; line-height: 1.5; margin-top: 8px;">Requires the api/trade.js function deployed with KALSHI_ACCESS_KEY, KALSHI_PRIVATE_KEY and TRADE_SECRET env vars set on Vercel. Orders are $25 limit-at-ask, signed server-side; your key never touches the browser.</div>
+        </sc-if>
+        <sc-if value="{{ liveArmed }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ stopLive }}" style="width: 100%; background: #e5636a; border: 1px solid #e5636a; border-radius: 4px; color: #0d0f13; font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; padding: 10px; cursor: pointer;">■ STOP — DISARM NOW</button>
+          <div style="font-size: 10px; color: #8b93a3; line-height: 1.5; margin-top: 8px;">{{ liveCapLabel }}</div>
+          <div style="font-size: 10px; color: #e5636a; line-height: 1.5; margin-top: 2px;">{{ liveStatusErr }}</div>
+        </sc-if>
+      </div>
+
       <!-- Market pool -->
       <div style="background: #14181f; border: 1px solid #232936; border-radius: 6px; padding: 16px;">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
@@ -2021,17 +2068,19 @@
       <div style="font-size: 10px; color: #5c6474; line-height: 1.5; padding: 0 4px;">{{ dataNote }} Settlement uses real Kalshi results when the feed provides them (✓ in the log), with odds-based simulation as fallback. Paper trading only — not financial advice.</div>
     </div>
   </div>
+</sc-if>
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;startingBankroll&quot;: {&quot;editor&quot;: &quot;int&quot;, &quot;default&quot;: 500, &quot;min&quot;: 100, &quot;max&quot;: 10000, &quot;unit&quot;: &quot;$&quot;, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Desk settings&quot;}}">
 class Component extends DCLogic {
-  state = { now: Date.now(), rev: 0, filter: "all", editorOpen: false, editorText: "", copiedId: null };
+  state = { now: Date.now(), rev: 0, filter: "all", editorOpen: false, editorText: "", copiedId: null, pw: "", pwErr: false, auth: (() => { try { return localStorage.getItem("kpd-auth") === "ok"; } catch (e) { return false; } })() };
   KEY = "kpd-live-log-v1";
   POOL_KEY = "kpd-pool-v1";
   SNAPSHOT_LABEL = "JUL 4, 2026";
 
   componentDidMount() {
     this.loadLog();
+    try { this.liveCfg = JSON.parse(localStorage.getItem("kpd-live-v1") || "null"); } catch (e) { this.liveCfg = null; }
     this.dataMode = "connecting";
     this.fetchLive();
     this.tick();
@@ -2041,6 +2090,7 @@ class Component extends DCLogic {
 
   tick() {
     const now = Date.now();
+    if (this.liveCfg && this.liveCfg.armed && now - (this.lastBal || 0) > 60000) { this.lastBal = now; this.fetchStatus(); }
     let dirty = this.settleDue(now);
     dirty = this.scan(now) || dirty;
     if (dirty) this.save();
@@ -2358,6 +2408,54 @@ class Component extends DCLogic {
     return cands;
   }
 
+  async fetchStatus() {
+    try {
+      const r = await fetch("/api/trade?action=status", { headers: { "x-trade-secret": this.liveCfg.secret } });
+      this.liveStatus = await r.json();
+      this.liveStatus._httpOk = r.ok;
+    } catch (e) { this.liveStatus = { error: String(e) }; }
+    this.setState({ rev: this.state.rev + 1 });
+  }
+
+  livePnlToday() {
+    const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+    return ((this.log && this.log.bets) || []).filter(b => b.live && b.result && b.closeTs >= d0.getTime()).reduce((s, b) => s + this.pnlOf(b), 0);
+  }
+
+  disarm(reason) {
+    if (this.liveCfg) {
+      this.liveCfg.armed = false;
+      try { localStorage.setItem("kpd-live-v1", JSON.stringify(this.liveCfg)); } catch (e) {}
+    }
+    this.pushEvent("\u25a0", "#e5636a", "LIVE TRADING STOPPED \u2014 " + reason);
+    this.setState({ rev: this.state.rev + 1 });
+  }
+
+  async placeLive(c, betId) {
+    const cfg = this.liveCfg;
+    if (!cfg || !cfg.armed || !c.m.ticker) return;
+    if (this.livePnlToday() <= -(cfg.cap || 500)) { this.disarm("daily loss cap (-$" + (cfg.cap || 500) + ") reached"); return; }
+    const ask = c.side === "YES" ? (c.m._ask || c.pc) : (100 - (c.m._bid || (100 - c.pc)));
+    const price = Math.max(1, Math.min(99, Math.round(ask)));
+    try {
+      const r = await fetch("/api/trade", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-trade-secret": cfg.secret },
+        body: JSON.stringify({ ticker: c.m.ticker, side: c.side.toLowerCase(), count: c.contracts, price })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j.order) {
+        this.pushEvent("\u25c9", "#4fce7f", "LIVE ORDER placed \u00b7 " + c.side + " " + c.contracts + "x @ " + price + "\u00a2 \u00b7 " + c.m.t);
+        const b = this.log.bets.find(x => x.id === betId);
+        if (b) { b.live = true; b.orderId = (j.order && j.order.order_id) || ""; this.save(); }
+      } else {
+        this.pushEvent("\u25c9", "#e5636a", "LIVE ORDER rejected (" + (j.error || r.status) + ") \u00b7 " + c.m.t);
+      }
+    } catch (e) {
+      this.pushEvent("\u25c9", "#e5636a", "LIVE ORDER failed \u00b7 " + String((e && e.message) || e));
+    }
+  }
+
   pushEvent(icon, color, text, opts) {
     this.events = this.events || [];
     const e = { ts: Date.now(), icon, color, text, kind: (opts && opts.kind) || "" };
@@ -2399,6 +2497,7 @@ class Component extends DCLogic {
         closeTs: c.closeTs, result: null, settledBy: null
       });
       dirty = true;
+      if (this.liveCfg && this.liveCfg.armed) this.placeLive(c, id);
     }
     return dirty;
   }
@@ -2464,6 +2563,15 @@ class Component extends DCLogic {
 
   save() {
     try { localStorage.setItem(this.KEY, JSON.stringify(this.log)); } catch (e) {}
+  }
+
+  tryUnlock() {
+    if ((this.state.pw || "") === "20042004") {
+      try { localStorage.setItem("kpd-auth", "ok"); } catch (e) {}
+      this.setState({ auth: true, pw: "", pwErr: false });
+    } else {
+      this.setState({ pwErr: true });
+    }
   }
 
   resetLog() {
@@ -2606,7 +2714,7 @@ class Component extends DCLogic {
         full: (b.ticker ? b.ticker + " \u00b7 " : "") + b.title,
         sideAt: b.side + " @ " + b.pc + "\u00a2",
         sideColor: b.side === "YES" ? "#4fce7f" : "#e8875a",
-        strat: b.strat,
+        strat: (b.live ? "\u25c9 LIVE \u00b7 " : "") + b.strat,
         result: done ? (won ? "WON" : "LOST") + (b.settledBy === "real" ? " \u2713" : "") : "OPEN",
         resultColor: done ? (won ? "#4fce7f" : "#e5636a") : "#eab54e",
         resultBg: done ? (won ? "#12281c" : "#2c1518") : "#2a2213",
@@ -2699,7 +2807,35 @@ class Component extends DCLogic {
       catBoosts,
       candCount: cands.length,
       resetLog: () => this.resetLog(),
-      buildTag: "BUILD v15",
+      locked: !this.state.auth,
+      unlocked: this.state.auth,
+      pw: this.state.pw,
+      pwErr: this.state.pwErr,
+      onPwChange: (e) => this.setState({ pw: e.target.value, pwErr: false }),
+      pwKey: (e) => { if (e.key === "Enter") this.tryUnlock(); },
+      tryUnlock: () => this.tryUnlock(),
+      liveArmed: !!(this.liveCfg && this.liveCfg.armed),
+      liveDisarmed: !(this.liveCfg && this.liveCfg.armed),
+      liveChip: (this.liveCfg && this.liveCfg.armed) ? "ARMED \u00b7 FULL AUTO" : "DISARMED",
+      liveChipColor: (this.liveCfg && this.liveCfg.armed) ? "#e5636a" : "#7d8697",
+      liveChipBg: (this.liveCfg && this.liveCfg.armed) ? "#2c1518" : "#1d222c",
+      liveBalance: (this.liveStatus && this.liveStatus.balance != null) ? "$" + (this.liveStatus.balance / 100).toFixed(2) : (this.liveStatus && this.liveStatus.error ? "error" : "\u2014"),
+      liveStatusErr: (this.liveStatus && this.liveStatus.error) ? String(this.liveStatus.error) : "",
+      livePnlTodayLabel: this.fmt$(this.livePnlToday()),
+      livePnlTodayColor: this.livePnlToday() >= 0 ? "#4fce7f" : "#e5636a",
+      liveCapLabel: "auto-halt at \u2212$" + ((this.liveCfg && this.liveCfg.cap) || 500) + " day loss \u00b7 $30/order cap",
+      armLive: () => {
+        const secret = window.prompt("Enter your TRADE secret (the TRADE_SECRET env var you set on Vercel):");
+        if (!secret) return;
+        if (!window.confirm("ARM LIVE TRADING?\n\nReal $25 limit-at-ask orders will be placed automatically whenever all 6 gates pass. Auto-halt at \u2212$500 realized loss today. The STOP button disarms instantly.")) return;
+        this.liveCfg = { armed: true, secret, cap: 500 };
+        try { localStorage.setItem("kpd-live-v1", JSON.stringify(this.liveCfg)); } catch (e) {}
+        this.pushEvent("\u25c9", "#e5636a", "LIVE TRADING ARMED \u2014 full auto \u00b7 $25 limit-at-ask \u00b7 halt at \u2212$500/day");
+        this.lastBal = 0;
+        this.setState({ rev: this.state.rev + 1 });
+      },
+      stopLive: () => this.disarm("manual STOP"),
+      buildTag: "BUILD v17",
       events: (this.events || []).map(e => {
         const d = new Date(e.ts);
         const p2 = n => String(n).padStart(2, "0");

@@ -1951,7 +1951,7 @@
             <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: {{ b.color }}; border: 1px solid #232936; border-radius: 3px; padding: 2px 7px;">{{ b.name }} ×{{ b.mult }}</div>
           </sc-for>
         </div>
-        <div style="font-size: 10px; color: #5c6474; line-height: 1.5; margin-top: 12px;">{{ candCount }} positions re-scored every 5 seconds. A $25 bet fires the moment all 6 gates pass: settles in 5–60 min, 55–92¢ favorite band, 24h volume ≥ $500, model edge ≥ +2.5¢, composite score ≥ 60 (win odds × income × category form), and not already holding the market. No position caps — every qualified edge is taken.</div>
+        <div style="font-size: 10px; color: #5c6474; line-height: 1.5; margin-top: 12px;">{{ candCount }} positions re-scored every 5 seconds. A $25 bet fires the moment all 6 gates pass: settles in 5–60 min, 55–92¢ favorite band, 24h volume ≥ $500, net edge ≥ +2.5¢ after Kalshi fees (~7% × p × (1−p) per contract), composite score ≥ 60 (win odds × income × category form), and not already holding the market. No position caps — every qualified edge is taken.</div>
       </div>
 
       <!-- Category breakdown -->
@@ -2163,10 +2163,15 @@ class Component extends DCLogic {
     };
     const discoverSeries = async (base, wrap) => {
       const cats = ["Crypto", "Financials", "Economics", "Climate and Weather", "Sports", "World", "Entertainment", "Politics", "Science and Technology"];
-      const lists = await Promise.all(cats.map(c => {
-        const u0 = base + "/series?category=" + encodeURIComponent(c);
-        return this.fetchJson(wrap ? wrap(u0) : u0, 12000).catch(() => null);
-      }));
+      const lists = [];
+      for (let i = 0; i < cats.length; i += 4) {
+        const rs = await Promise.all(cats.slice(i, i + 4).map(c => {
+          const u0 = base + "/series?category=" + encodeURIComponent(c);
+          return this.fetchJson(wrap ? wrap(u0) : u0, 12000).catch(() => null);
+        }));
+        lists.push.apply(lists, rs);
+        if (i + 4 < cats.length) await new Promise(r => setTimeout(r, 400));
+      }
       let all = [];
       lists.forEach(j => { if (j && j.series) all = all.concat(j.series); });
       const freq = s => ((s && s.frequency) || "").toLowerCase();
@@ -2175,7 +2180,7 @@ class Component extends DCLogic {
       return fast.concat(rest).map(s => s.ticker).filter(Boolean);
     };
     const trySeries = async (base, wrap) => {
-      const staticList = ["KXBTCD", "KXETHD", "KXBTC", "KXETH", "KXXRPD", "KXSOLD", "KXDOGED", "KXINX", "KXINXD", "KXINXU", "KXNASDAQ100", "KXNASDAQ100D", "KXNASDAQ100U", "KXBTCUP", "KXETHUP", "KXHIGHNY", "KXHIGHCHI", "KXHIGHLAX", "KXHIGHMIA", "KXHIGHDEN", "KXHIGHAUS", "KXHIGHPHIL", "KXMLBGAME", "KXWNBAGAME", "KXNBAGAME", "KXNHLGAME", "KXUFCFIGHT", "KXWCTOTAL", "KXWCSPREAD", "KXWCADVANCE"];
+      const staticList = ["KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M", "KXBTCD", "KXETHD", "KXBTC", "KXETH", "KXXRPD", "KXSOLD", "KXDOGED", "KXINX", "KXINXD", "KXINXU", "KXNASDAQ100", "KXNASDAQ100D", "KXNASDAQ100U", "KXBTCUP", "KXETHUP", "KXHIGHNY", "KXHIGHCHI", "KXHIGHLAX", "KXHIGHMIA", "KXHIGHDEN", "KXHIGHAUS", "KXHIGHPHIL", "KXMLBGAME", "KXWNBAGAME", "KXNBAGAME", "KXNHLGAME", "KXUFCFIGHT", "KXWCTOTAL", "KXWCSPREAD", "KXWCADVANCE"];
       try {
         let discovered = (this.seriesCache && Date.now() - (this.seriesCacheTs || 0) < 1800000) ? this.seriesCache : null;
         if (!discovered) {
@@ -2183,11 +2188,17 @@ class Component extends DCLogic {
           if (discovered.length) { this.seriesCache = discovered; this.seriesCacheTs = Date.now(); }
           diag.push("KALSHI CATALOG: discovered " + discovered.length + " series");
         }
-        const series = Array.from(new Set(staticList.concat(discovered || []))).slice(0, 80);
-        const results = await Promise.all(series.map(s => {
-          const u0 = base + "/markets?limit=100&status=open&series_ticker=" + s;
-          return this.fetchJson(wrap ? wrap(u0) : u0, 12000).catch(() => null);
-        }));
+        const series = Array.from(new Set(staticList.concat(discovered || []))).slice(0, 48);
+        const results = [];
+        for (let i = 0; i < series.length; i += 8) {
+          const chunk = series.slice(i, i + 8);
+          const rs = await Promise.all(chunk.map(s => {
+            const u0 = base + "/markets?limit=100&status=open&series_ticker=" + s;
+            return this.fetchJson(wrap ? wrap(u0) : u0, 12000).catch(() => null);
+          }));
+          results.push.apply(results, rs);
+          if (i + 8 < series.length) await new Promise(r => setTimeout(r, 350));
+        }
         let all = [], hits = [];
         results.forEach((j, i) => {
           if (j && j.markets && j.markets.length) { all = all.concat(j.markets); hits.push(series[i] + "(" + j.markets.length + ")"); }
@@ -2204,8 +2215,10 @@ class Component extends DCLogic {
       return out;
     };
     const comboProxy = async () => {
-      const results = await Promise.all([trySeries("/api/kalshi"), tryKalshi("KALSHI PROXY", "/api/kalshi", Q1)]);
-      const pool = union(results[0] ? results[0].pool : [], results[1] ? results[1].pool : []).sort((x, y) => y.vol - x.vol).slice(0, 80);
+      const r1 = await trySeries("/api/kalshi");
+      let r2 = null;
+      if (!r1 || r1.pool.length < 8) r2 = await tryKalshi("KALSHI PROXY", "/api/kalshi", Q1);
+      const pool = union(r1 ? r1.pool : [], r2 ? r2.pool : []).sort((x, y) => y.vol - x.vol).slice(0, 80);
       diag.push("KALSHI MERGED: " + pool.length + " tradable in pool");
       if (pool.length >= 1) return { pool, base: "/api/kalshi", name: "KALSHI" };
       return null;
@@ -2238,7 +2251,7 @@ class Component extends DCLogic {
       this.liveSource = winner.name;
       this.kalshiBase = winner.base;
       clearTimeout(this.refetchT);
-      this.refetchT = setTimeout(() => this.fetchLive(), 120000);
+      this.refetchT = setTimeout(() => this.fetchLive(), 180000);
     } else {
       // refresh came back empty/failed: keep serving the cached pool if it is still valid
       this.livePool = (this.livePool || []).filter(m => m.closeTs > Date.now() + 4 * 60000);
@@ -2251,7 +2264,7 @@ class Component extends DCLogic {
         this.pushEvent("\u27f3", "#e5636a", "all feeds unreachable \u2014 retrying in 30s", { kind: "feed", coalesce: true });
       }
       clearTimeout(this.refetchT);
-      this.refetchT = setTimeout(() => this.fetchLive(), 30000);
+      this.refetchT = setTimeout(() => this.fetchLive(), 45000);
     }
     this.setState({ rev: this.state.rev + 1 });
   }
@@ -2319,9 +2332,13 @@ class Component extends DCLogic {
         const winProb = Math.min(0.95, pc / 100 + 0.03);
         const sig = (this.rng(Math.imul(bucket, 40503) ^ (idx * 131) ^ (side === "YES" ? 7 : 13))() - 0.4) * 7;
         const edge = Math.round((3 + sig) * 10) / 10;
+        // Kalshi trading fee: ~7% x price x (1-price) per contract
+        const feeC = Math.round(7 * (pc / 100) * (1 - pc / 100) * 10) / 10;
+        const fee = Math.ceil(contracts * feeC) / 100;
+        const netEdge = Math.round((edge - feeC) * 10) / 10;
         const boost = perf[m.c] || 1;
         const evNorm = Math.min(contracts * 0.03 / 2, 1);
-        const edgeNorm = Math.min(Math.max((edge - 2.5) / 4, 0), 1);
+        const edgeNorm = Math.min(Math.max((netEdge - 2.5) / 4, 0), 1);
         const score = Math.round((winProb * 0.55 + evNorm * 0.30 + edgeNorm * 0.15) * boost * 100);
         const dupe = openBets.some(b => b.title === m.t);
         const vol = m.vol || 0;
@@ -2330,11 +2347,11 @@ class Component extends DCLogic {
           { k: "T-MINUS", label: "settles in 5\u201360 min", pass: minsLeft >= 5 && minsLeft <= 60, val: Math.max(0, Math.round(minsLeft)) + "m" },
           { k: "WIN ODDS", label: "price in 55\u201392\u00a2 favorite band", pass: pc >= 55 && pc <= 92, val: pc + "\u00a2" },
           { k: "LIQUIDITY", label: "24h volume \u2265 $500", pass: vol >= 500, val: "$" + volLabel },
-          { k: "MODEL EDGE", label: "signal \u2265 +2.5\u00a2 over price", pass: edge >= 2.5, val: (edge >= 0 ? "+" : "") + edge + "\u00a2" },
+          { k: "NET EDGE", label: "signal \u2265 +2.5\u00a2 after Kalshi fees", pass: netEdge >= 2.5, val: (netEdge >= 0 ? "+" : "") + netEdge + "\u00a2" },
           { k: "SCORE", label: "composite \u00d7 category form \u2265 60", pass: score >= 60, val: String(score) },
           { k: "DUPLICATE", label: "not already holding this market", pass: !dupe, val: dupe ? "held" : "clear" }
         ];
-        cands.push({ m, idx, side, pc, contracts, winProb, edge, score, closeTs, minsLeft, gates, pass: gates.every(g => g.pass), held: dupe });
+        cands.push({ m, idx, side, pc, contracts, winProb, edge, netEdge, fee, score, closeTs, minsLeft, gates, pass: gates.every(g => g.pass), held: dupe });
       });
     });
     cands.sort((a, b) => (b.held ? 1 : 0) - (a.held ? 1 : 0) || b.score - a.score);
@@ -2373,11 +2390,11 @@ class Component extends DCLogic {
       if (this.log.bets.some(b => !b.result && b.title === c.m.t)) continue;
       const id = c.m.t + "@" + c.closeTs + "-" + c.side;
       if (this.log.bets.some(b => b.id === id)) continue;
-      this.pushEvent("\u271a", "#4fce7f", "ENTERED " + c.side + " @ " + c.pc + "\u00a2 \u00b7 " + c.m.t + " \u00b7 $25 to win $" + (c.contracts * (100 - c.pc) / 100).toFixed(2));
+      this.pushEvent("\u271a", "#4fce7f", "ENTERED " + c.side + " @ " + c.pc + "\u00a2 \u00b7 " + c.m.t + " \u00b7 $25 to win $" + (c.contracts * (100 - c.pc) / 100 - c.fee).toFixed(2) + " net of fees");
       this.log.bets.push({
         id, placedTs: now,
         title: c.m.t, ticker: c.m.ticker || "", cat: c.m.c, side: c.side, pc: c.pc,
-        contracts: c.contracts, score: c.score, edge: c.edge, winProb: Math.round(c.winProb * 100),
+        contracts: c.contracts, score: c.score, edge: c.netEdge, fee: c.fee, winProb: Math.round(c.winProb * 100),
         strat: c.winProb >= 0.8 ? "HIGH-PROB" : "KELLY-EDGE",
         closeTs: c.closeTs, result: null, settledBy: null
       });
@@ -2457,8 +2474,9 @@ class Component extends DCLogic {
   }
 
   pnlOf(b) {
-    if (b.result === "won") return b.contracts * (100 - b.pc) / 100;
-    if (b.result === "lost") return -(b.contracts * b.pc / 100);
+    const fee = b.fee || 0;
+    if (b.result === "won") return b.contracts * (100 - b.pc) / 100 - fee;
+    if (b.result === "lost") return -(b.contracts * b.pc / 100) - fee;
     return 0;
   }
 
@@ -2550,7 +2568,7 @@ class Component extends DCLogic {
         side: bSide, price: bPc,
         sideBg: bSide === "YES" ? "#4fce7f" : "#e8875a",
         settleIn: Math.floor(bSecs / 60) + ":" + String(bSecs % 60).padStart(2, "0"),
-        why: Math.round(bestC.winProb * 100) + "% modeled win odds, +" + bestC.edge + "\u00a2 edge over the " + bPc + "\u00a2 price, " + (100 / bPc).toFixed(2) + "x payout \u2014 best win-odds \u00d7 income composite this sweep",
+        why: Math.round(bestC.winProb * 100) + "% modeled win odds, " + (bestC.netEdge >= 0 ? "+" : "") + bestC.netEdge + "\u00a2 edge net of fees over the " + bPc + "\u00a2 price, " + (100 / bPc).toFixed(2) + "x payout \u2014 best win-odds \u00d7 income composite this sweep",
         risk: riskMap[bestC.m.c] || "a thin order book near close can reprice the favorite quickly",
         trigger: "official settlement print at " + fmtT(bClose),
         copyLabel: this.state.copiedId === "best" ? "COPIED \u2713" : "COPY NAME",
@@ -2562,11 +2580,11 @@ class Component extends DCLogic {
         },
         stats: [
           { k: "EST WIN ODDS", v: Math.round(bestC.winProb * 100) + "%", color: "#e6e9ef" },
-          { k: "MODEL EDGE", v: "+" + bestC.edge + "\u00a2", color: "#4fce7f" },
+          { k: "NET EDGE", v: (bestC.netEdge >= 0 ? "+" : "") + bestC.netEdge + "\u00a2", color: "#4fce7f" },
           { k: "CONFIDENCE", v: conf, color: conf === "HIGH" ? "#4fce7f" : "#eab54e" },
           { k: "STAKE", v: "$25.00", color: "#e6e9ef" },
-          { k: "TO WIN", v: "+$" + (bContracts * (100 - bPc) / 100).toFixed(2), color: "#4fce7f" },
-          { k: "PAYOUT", v: (100 / bPc).toFixed(2) + "x", color: "#e6e9ef" }
+          { k: "TO WIN (NET)", v: "+$" + (bContracts * (100 - bPc) / 100 - (bestC.fee || 0)).toFixed(2), color: "#4fce7f" },
+          { k: "FEES", v: "$" + (bestC.fee || 0).toFixed(2), color: "#7d8697" }
         ]
       };
     }
@@ -2681,7 +2699,7 @@ class Component extends DCLogic {
       catBoosts,
       candCount: cands.length,
       resetLog: () => this.resetLog(),
-      buildTag: "BUILD v13",
+      buildTag: "BUILD v14",
       events: (this.events || []).map(e => {
         const d = new Date(e.ts);
         const p2 = n => String(n).padStart(2, "0");

@@ -1,8 +1,16 @@
 # Kalshi Paper Desk — Deploy
 
-A single-file, real-time paper-trading dashboard. No build step, no server, no dependencies.
+A single-file, real-time paper-trading dashboard. No build step, no server code, no dependencies.
 
-## Deploy to GitHub Pages (~5 min)
+## Deploy to Vercel (recommended — guaranteed live feed)
+
+1. Put BOTH files (`index.html` AND `vercel.json`) in your project root.
+2. Redeploy (git push, or `vercel --prod`, or drag the folder into vercel.com/new).
+3. `vercel.json` makes Vercel proxy `/api/kalshi/*` to Kalshi's API from your own
+   domain — the browser sees a same-origin request, so CORS cannot block it.
+4. Open the site: the badge should read `● LIVE · KALSHI` within seconds.
+
+## Deploy to GitHub Pages (fallback feeds only)
 
 1. Create a new GitHub repository (public is fine), e.g. `kalshi-paper-desk`.
 2. Upload `index.html` to the repo root.
@@ -27,8 +35,9 @@ A single-file, real-time paper-trading dashboard. No build step, no server, no d
 
 ## Notes
 
-- Settlement is currently simulated from each market's own implied odds
-  (paper trading). Real-outcome settlement can be added once a feed is confirmed.
-- If you always get FEED OFFLINE, Kalshi is blocking browser requests and the
-  public relays are down — the fix is a ~10-line Cloudflare Worker proxy.
+- Settlement: for Kalshi-fed bets the desk fetches the market's REAL result at
+  close (marked ✓ in the log); odds-based simulation is only a fallback if the
+  result isn't available within 20 minutes.
+- If GitHub Pages always shows FEED OFFLINE, use the Vercel route above — the
+  proxy makes the feed unconditional.
 - Paper trading only. Not financial advice.

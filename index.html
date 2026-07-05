@@ -2135,9 +2135,18 @@
 
       <!-- Bet log (full-width ledger) -->
       <div style="flex: 1 1 100%; min-width: 0;">
+        <div style="display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap; margin: 0 0 12px 0;">
+          <sc-for list="{{ pipeStages }}" as="ps" hint-placeholder-count="4">
+            <button onClick="{{ ps.onClick }}" style="flex: 1 1 190px; text-align: left; background: {{ ps.bg }}; border: 1px solid {{ ps.border }}; border-radius: 8px; padding: 10px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 3px;" style-hover="border-color: #3a465c;">
+              <div style="font-size: 9px; letter-spacing: 0.1em; color: {{ ps.labelColor }}; font-weight: 700;">{{ ps.label }}</div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 16px; font-weight: 600; color: #e6e9ef;">{{ ps.value }}</div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #7d8697;">{{ ps.sub }}</div>
+            </button>
+          </sc-for>
+        </div>
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px 0;">
           <div style="display: flex; align-items: center; gap: 14px;">
-            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: 0.12em; color: #aab2c0; font-weight: 700;"><span style="width: 3px; height: 13px; background: #4fce7f; border-radius: 2px; display: inline-block;"></span>BET LOG</div>
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: 0.12em; color: #aab2c0; font-weight: 700;"><span style="width: 3px; height: 13px; background: #4fce7f; border-radius: 2px; display: inline-block;"></span>LEDGER · THE BETTING PROCESS</div>
             <div style="display: flex; gap: 4px;">
               <sc-for list="{{ logTabs }}" as="t" hint-placeholder-count="3">
                 <button onClick="{{ t.onClick }}" style="background: {{ t.bg }}; border: 1px solid {{ t.border }}; border-radius: 3px; color: {{ t.color }}; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.06em; padding: 3px 10px; cursor: pointer;" style-hover="border-color: #3a465c;">{{ t.label }}</button>
@@ -2193,6 +2202,12 @@ class Component extends DCLogic {
 
   componentDidMount() {
     this.loadLog();
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && this.liveCfg && this.liveCfg.secret && Date.now() - (this.pfSynced || 0) > 10000) {
+        this.lastPf = Date.now(); this.lastBal = Date.now();
+        this.syncPortfolio(); this.fetchStatus();
+      }
+    });
     try { this.liveCfg = JSON.parse(localStorage.getItem("kpd-live-v1") || "null"); } catch (e) { this.liveCfg = null; }
     this.dataMode = "connecting";
     this.fetchLive();
@@ -2680,6 +2695,19 @@ class Component extends DCLogic {
     return cands;
   }
 
+  // Kalshi 2026 API: counts are fixed-point strings (position_fp "10.00"), money is
+  // *_dollars strings; legacy integer-cent fields are being removed. Read fp/dollars
+  // FIRST and fall back to legacy names so both API generations parse correctly.
+  fpNum(v) { const n = parseFloat(v); return isFinite(n) ? n : null; }
+  fpCount(o, fpKey, legacyKey) {
+    const a = this.fpNum(o[fpKey]); if (a != null) return a;
+    const b = legacyKey ? this.fpNum(o[legacyKey]) : null; return b != null ? b : 0;
+  }
+  fpCents(o, dollarsKey, legacyCentsKey) {
+    const d = this.fpNum(o[dollarsKey]); if (d != null) return d * 100;
+    const c = legacyCentsKey ? this.fpNum(o[legacyCentsKey]) : null; return c != null ? c : null;
+  }
+
   async syncPortfolio() {
     if (!this.liveCfg || !this.liveCfg.secret || !this.log) return;
     try {
@@ -2701,11 +2729,11 @@ class Component extends DCLogic {
         if ((f.action || "buy") !== "buy") return;
         const raw = (f.side || "yes").toLowerCase();
         const sideUp = raw === "bid" ? "YES" : raw === "ask" ? "NO" : raw.toUpperCase();
-        const cnt = parseFloat(f.count) || 0;
-        let yp = parseFloat(f.yes_price);
-        if (!isFinite(yp)) yp = parseFloat(f.yes_price_dollars) * 100;
-        if (!isFinite(yp)) { const p = parseFloat(f.price); yp = isFinite(p) ? (p <= 1 ? p * 100 : p) : NaN; }
-        if (!isFinite(yp)) return;
+        const cnt = this.fpCount(f, "count_fp", "count");
+        let yp = this.fpCents(f, "yes_price_dollars", null);
+        if (yp == null) yp = this.fpCents(f, "price_dollars", null);
+        if (yp == null) { const raw = this.fpNum(f.yes_price) != null ? this.fpNum(f.yes_price) : this.fpNum(f.price); yp = raw == null ? null : (raw <= 1 ? raw * 100 : raw); }
+        if (yp == null || !cnt) return;
         const pc = sideUp === "NO" ? 100 - yp : yp; // cost of the side actually bought
         const key = f.ticker + "|" + sideUp;
         const g = groups[key] = groups[key] || { ticker: f.ticker, side: sideUp, count: 0, costC: 0, ts: 0 };
@@ -2743,10 +2771,8 @@ class Component extends DCLogic {
           if (b.ticker !== s.ticker || b.result) return;
           b.result = (b.side.toLowerCase() === res) ? "won" : "lost";
           b.settledBy = "real";
-          let revC = parseFloat(s.revenue);
-          const revD = parseFloat(s.revenue_dollars);
-          if (isFinite(revD)) revC = revD * 100;
-          if (b.live && isFinite(revC)) b.realPnl = revC / 100 - (b.contracts * b.pc / 100);
+          const revC = this.fpCents(s, "revenue_dollars", "revenue");
+          if (b.live && revC != null) b.realPnl = revC / 100 - (b.contracts * b.pc / 100);
           this.pushEvent(b.result === "won" ? "\u2713" : "\u2717", b.result === "won" ? "#4fce7f" : "#e5636a",
             "KALSHI SETTLED " + (b.result === "won" ? "WON " : "LOST ") + this.fmt$(this.pnlOf(b)) + " \u00b7 " + b.title);
           this.notify("SETTLED " + (b.result === "won" ? "WON " : "LOST ") + this.fmt$(this.pnlOf(b)) + " \u2014 " + b.title);
@@ -2774,18 +2800,17 @@ class Component extends DCLogic {
       // ---- position audit: OPEN in the log must mean a real position on Kalshi ----
       const posSet = {};
       (j.positions || []).forEach(p => {
-        const q = parseFloat(p.position != null ? p.position : (p.total_traded || 0));
+        const q = this.fpCount(p, "position_fp", "position");
         if (p.ticker && Math.abs(q) > 0) posSet[p.ticker] = true;
       });
       // import ANY Kalshi position missing from the log (positions are ground truth, no age limit)
       (j.positions || []).forEach(p => {
-        const q = parseFloat(p.position != null ? p.position : 0);
+        const q = this.fpCount(p, "position_fp", "position");
         if (!p.ticker || !q) return;
         if (this.log.bets.some(x => x.ticker === p.ticker && !x.result)) return;
         const pSide = q > 0 ? "YES" : "NO";
         const cnt = Math.abs(Math.round(q));
-        let expo = parseFloat(p.market_exposure_dollars);
-        if (!isFinite(expo)) { const ec = parseFloat(p.market_exposure); expo = isFinite(ec) ? ec / 100 : cnt * 0.5; }
+        const expo = (this.fpCents(p, "market_exposure_dollars", "market_exposure") || cnt * 50) / 100;
         const pc2 = Math.max(1, Math.min(99, Math.round(Math.abs(expo) / Math.max(cnt, 1) * 100)));
         this.log.bets.unshift({
           id: "kalshi-pos-" + p.ticker + "-" + Date.now(), title: p.ticker, full: p.ticker, ticker: p.ticker,
@@ -2829,13 +2854,11 @@ class Component extends DCLogic {
       });
       let atRisk = 0;
       (j.positions || []).forEach(p => {
-        const ed = parseFloat(p.market_exposure_dollars);
-        if (isFinite(ed)) { atRisk += Math.abs(ed); return; }
-        const ec = parseFloat(p.market_exposure);
-        if (isFinite(ec)) atRisk += Math.abs(ec) / 100;
+        const eC = this.fpCents(p, "market_exposure_dollars", "market_exposure");
+        if (eC != null) atRisk += Math.abs(eC) / 100;
       });
       this.atRisk = Math.round(atRisk * 100) / 100;
-      this.posSet = posSet; this.posSetTs = Date.now(); this.lastPf = Date.now();
+      this.posSet = posSet; this.posSetTs = Date.now(); this.lastPf = Date.now(); this.pfOkTs = Date.now();
       this.recordSample();
       if (audited) this.pushEvent("\u25cb", "#7d8697", "POSITION AUDIT: voided " + audited + " open bet" + (audited > 1 ? "s" : "") + " with no matching Kalshi position");
       this.pfSynced = Date.now();
@@ -2902,6 +2925,20 @@ class Component extends DCLogic {
     this.setState({ rev: this.state.rev + 1 });
   }
 
+  // Sync-before-trade barrier: when ARMED, no buy decision is allowed until the desk
+  // has (a) been awake 45s past load, (b) completed a VERIFIED portfolio sync with
+  // Kalshi (positions actually returned) within the last 90s, and (c) a live balance.
+  // Refreshing the page can never fire orders before the account state is confirmed.
+  tradeReady(now) {
+    if (!this.liveCfg || !this.liveCfg.armed) return true; // paper entries unaffected
+    const n = now || Date.now();
+    if (!this.bootTs) this.bootTs = n;
+    if (n - this.bootTs < 45000) return false;
+    if (!this.pfOkTs || n - this.pfOkTs > 90000) return false;
+    if (!this.liveStatus || this.liveStatus.balance == null) return false;
+    return true;
+  }
+
   async cancelOrder(b, why) {
     if (!this.liveCfg || !b.orderId) return;
     try {
@@ -2914,6 +2951,7 @@ class Component extends DCLogic {
       if (r.ok) {
         this.pushEvent("\u2716", "#eab54e", "ORDER CANCELED (" + why + ") \u00b7 " + b.title);
         this.voidBet(b.id, "canceled: " + why);
+        setTimeout(() => { this.lastPf = Date.now(); this.syncPortfolio(); }, 3000);
       } else {
         b._cancelFails = (b._cancelFails || 0) + 1;
         if (b._cancelFails >= 3) {
@@ -2957,8 +2995,19 @@ class Component extends DCLogic {
       this.pushEvent("\u25cb", "#eab54e", "balance under $26 \u2014 order skipped", { kind: "lowbal", coalesce: true });
       return;
     }
+    // sync-before-trade barrier: refuse to trade on unverified account state
+    if (!this.tradeReady()) {
+      this.pushEvent("\u25cb", "#eab54e", "order blocked \u2014 account state not verified yet \u00b7 " + c.m.t, { kind: "hold", coalesce: true });
+      return;
+    }
     // pre-flight audit: refresh the position snapshot if stale, and never re-buy a ticker we actually hold
-    if (!this.posSetTs || Date.now() - this.posSetTs > 45000) { try { await this.syncPortfolio(); } catch (e) {} }
+    if (!this.posSetTs || Date.now() - this.posSetTs > 45000) {
+      try { await this.syncPortfolio(); } catch (e) {}
+      if (!this.pfOkTs || Date.now() - this.pfOkTs > 45000) {
+        this.pushEvent("\u25cb", "#eab54e", "order blocked \u2014 could not verify positions with Kalshi \u00b7 " + c.m.t, { kind: "hold", coalesce: true });
+        return;
+      }
+    }
     if (this.posSet && this.posSet[c.m.ticker]) {
       const held = this.log.bets.find(x => x.id === betId);
       if (held && !held.result) { held.live = true; this.save(); }
@@ -2984,6 +3033,7 @@ class Component extends DCLogic {
           b.live = true; b.orderId = (j.order && j.order.order_id) || "";
           const fc = parseFloat((j.order && (j.order.fill_count != null ? j.order.fill_count : j.order.taker_fill_count)) || 0);
           b.fillState = fc >= liveCount ? "filled" : fc > 0 ? "partial" : "resting";
+          setTimeout(() => { this.lastPf = Date.now(); this.syncPortfolio(); }, 4000); // verify against Kalshi right after
           // log reflects the order actually submitted, not the signal quote
           b.pc = price; b.contracts = liveCount;
           b.fee = ((n2, p2) => Math.ceil(n2 * (Math.round(7 * (p2 / 100) * (1 - p2 / 100) * 10) / 10)) / 100)(liveCount, price);
@@ -3029,6 +3079,10 @@ class Component extends DCLogic {
     for (const c of cands) {
       if (!c.pass) continue;
       if (this.log.bets.some(b => !b.result && b.title === c.m.t)) continue;
+      if (this.liveCfg && this.liveCfg.armed && !this.tradeReady(now)) {
+        this.pushEvent("\u25cb", "#eab54e", "entries held \u2014 verifying Kalshi positions + balance before any buy decision", { kind: "hold", coalesce: true });
+        break;
+      }
       const idBase = c.m.t + "@" + c.closeTs + "-" + c.side;
       const prior = this.log.bets.filter(b => b.id === idBase || (b.id && b.id.indexOf(idBase + "-r") === 0));
       if (prior.some(b => b.result !== "void")) continue; // already open or genuinely settled
@@ -3044,7 +3098,7 @@ class Component extends DCLogic {
         closeTs: c.closeTs, result: null, settledBy: null
       });
       dirty = true;
-      if (this.liveCfg && this.liveCfg.armed) this.placeLive(c, id);
+      if (this.liveCfg && this.liveCfg.armed) { this.placeLive(c, id); break; } // one live order per sweep
     }
     this.manageOrders(now, cands);
     return dirty;
@@ -3254,7 +3308,10 @@ class Component extends DCLogic {
     // ---- log ----
     const relTo = ts => { const d = ts - now; if (d <= 0) return "now"; const h = Math.floor(d / 3600000), m2 = Math.floor((d % 3600000) / 60000); return h > 0 ? "in " + h + "h " + m2 + "m" : "in " + Math.max(1, m2) + "m"; };
     const filter = this.state.filter || "all";
-    const visible = bets.filter(b => filter === "all" ? true : filter === "open" ? !b.result : !!b.result);
+    // pipeline classification: ORDER = live limit resting (no position yet);
+    // POSITION = held (filled live, imported, or paper open); HISTORY = settled
+    const klassOf = b => b.result ? "history" : (b.live && b.fillState === "resting" ? "orders" : "positions");
+    const visible = bets.filter(b => filter === "all" ? true : klassOf(b) === filter);
     const logRows = visible.slice().sort((a, b) => (b.placedTs || 0) - (a.placedTs || 0)).map(b => {
       const done = !!b.result;
       const won = b.result === "won";
@@ -3321,7 +3378,22 @@ class Component extends DCLogic {
       border: filter === id ? "#3a465c" : "#232936",
       color: filter === id ? "#e6e9ef" : "#7d8697"
     });
-    const logTabs = [mkTab("all", "ALL", bets.length), mkTab("open", "OPEN", openBets.length), mkTab("settled", "SETTLED", settled.length)];
+    const ordersN = bets.filter(b => klassOf(b) === "orders").length;
+    const positionsN = bets.filter(b => klassOf(b) === "positions").length;
+    const logTabs = [mkTab("positions", "POSITIONS", positionsN), mkTab("orders", "ORDERS", ordersN), mkTab("history", "HISTORY", settled.length), mkTab("all", "ALL", bets.length)];
+    const mkStage = (key, label, value, sub, color) => ({
+      label, value, sub, labelColor: color,
+      bg: filter === key ? "#1a2130" : "#12161d",
+      border: filter === key ? "#3a465c" : "#232936",
+      onClick: () => this.setState({ filter: key })
+    });
+    const qualifyN = cands.filter(c => c.pass).length;
+    const pipeStages = [
+      mkStage("all", "1 \u00b7 SIGNALS", qualifyN + " qualify", cands.length + " scored \u00b7 8 gates \u00b7 $25 fixed", "#5aa7e8"),
+      mkStage("orders", "2 \u00b7 ORDERS", String(ordersN), "resting limits \u00b7 re-audited every sweep", "#eab54e"),
+      mkStage("positions", "3 \u00b7 POSITIONS", String(positionsN), "$" + openRisk.toFixed(2) + " at cost \u00b7 Kalshi-verified", "#4fce7f"),
+      mkStage("history", "4 \u00b7 HISTORY", String(settled.length), this.fmt$(settled.reduce((s2, b) => s2 + this.pnlOf(b), 0)) + " \u00b7 " + (settled.length ? Math.round((wins.length / settled.length) * 100) + "% hit" : "no results yet"), "#c792ea")
+    ];
 
     const perf = this.categoryPerf();
     const catBoosts = ["CRYPTO", "ECON", "COMMOD", "SPORTS", "POLITICS", "MARKET"].map(k => ({
@@ -3460,6 +3532,7 @@ class Component extends DCLogic {
           : "Connecting to live market feeds\u2026"),
       avgEdge,
       logTabs,
+      pipeStages,
       logRows,
       logEmpty: visible.length === 0,
       logSummary: settled.length + " settled \u00b7 " + openBets.length + " open \u00b7 fully automated",
@@ -3508,7 +3581,7 @@ class Component extends DCLogic {
         this.setState({ rev: this.state.rev + 1 });
       },
       stopLive: () => this.disarm("manual STOP"),
-      buildTag: "BUILD v37",
+      buildTag: "BUILD v40",
       events: (this.events || []).map(e => {
         const d = new Date(e.ts);
         const p2 = n => String(n).padStart(2, "0");

@@ -117,22 +117,33 @@ module.exports = async (req, res) => {
       return res.status(200).json(out);
     }
     if (req.method === "GET" && req.url && req.url.includes("action=portfolio")) {
+      // cursor-paginated fetch: Kalshi caps each page and returns a cursor
+      const pageAll = async (path, key, maxPages) => {
+        let out = [], cursor = "", pages = 0, err = null;
+        do {
+          const r = await kalshi("GET", path + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""));
+          if (!(r.status >= 200 && r.status < 300)) { err = key + ":" + r.status; break; }
+          out = out.concat((r.json && (r.json[key] || [])) || []);
+          cursor = (r.json && r.json.cursor) || "";
+          pages++;
+        } while (cursor && pages < maxPages);
+        return { list: out, err };
+      };
       const [f, s, p] = await Promise.all([
-        kalshi("GET", "/trade-api/v2/portfolio/fills?limit=100"),
-        kalshi("GET", "/trade-api/v2/portfolio/settlements?limit=100"),
-        kalshi("GET", "/trade-api/v2/portfolio/positions?limit=200&count_filter=position&settlement_status=unsettled")
+        pageAll("/trade-api/v2/portfolio/fills?limit=100", "fills", 2),
+        pageAll("/trade-api/v2/portfolio/settlements?limit=100", "settlements", 2),
+        pageAll("/trade-api/v2/portfolio/positions?limit=100&count_filter=position", "market_positions", 3)
       ]);
       return res.status(200).json({
-        fills: (f.json && f.json.fills) || [],
-        settlements: (s.json && s.json.settlements) || [],
-        positions: (p.json && (p.json.market_positions || p.json.positions)) || [],
-        errors: [["fills", f], ["settlements", s], ["positions", p]].filter(x => x[1].status >= 300).map(x => x[0] + ":" + x[1].status)
+        fills: f.list, settlements: s.list, positions: p.list,
+        errors: [f.err, s.err, p.err].filter(Boolean),
+        srv: 39
       });
     }
     if (req.method === "GET") {
       const bal = await kalshi("GET", "/trade-api/v2/portfolio/balance");
       if (bal.status >= 200 && bal.status < 300) {
-        return res.status(200).json({ balance: bal.json && bal.json.balance, via: bal.base, srv: 36 });
+        return res.status(200).json({ balance: bal.json && bal.json.balance, via: bal.base, srv: 39 });
       }
       const msg = (bal.json && ((bal.json.error && bal.json.error.message) || bal.json.message || bal.json.error)) || ("kalshi " + bal.status);
       return res.status(502).json({ error: String(msg), via: bal.base });

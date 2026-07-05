@@ -1,13 +1,16 @@
 // Kalshi live-trading proxy — Vercel serverless function.
-// Holds your API credentials as env vars and signs orders server-side.
-// Required env vars (Vercel → Project → Settings → Environment Variables):
-//   KALSHI_ACCESS_KEY   — API key ID from kalshi.com → Settings → API
-//   KALSHI_PRIVATE_KEY  — the RSA private key PEM (paste as-is, or base64-encoded)
-//   TRADE_SECRET        — any passphrase you choose; entered in the dashboard when arming
-// Optional: TRADING_HALTED=true  — server-side kill switch, rejects everything.
+// Env vars: KALSHI_ACCESS_KEY (key ID), KALSHI_PRIVATE_KEY (PEM or base64 PEM),
+// TRADE_SECRET (dashboard passphrase). Optional: TRADING_HALTED=true kill switch.
 const crypto = require("crypto");
 
-const BASE = "https://api.elections.kalshi.com";
+// Kalshi has moved trading endpoints between hosts over time; we probe in order
+// and lock onto whichever accepts the request.
+const BASES = [
+  "https://api.elections.kalshi.com",
+  "https://api.kalshi.com",
+  "https://trading-api.kalshi.com"
+];
+let goodBase = null; // cached per warm lambda
 
 function getPem() {
   let k = process.env.KALSHI_PRIVATE_KEY || "";
@@ -28,9 +31,9 @@ function sign(method, path) {
   return { ts, sig };
 }
 
-async function kalshi(method, path, body) {
+async function kalshiAt(base, method, path, body) {
   const { ts, sig } = sign(method, path.split("?")[0]);
-  const r = await fetch(BASE + path, {
+  const r = await fetch(base + path, {
     method,
     headers: {
       "KALSHI-ACCESS-KEY": process.env.KALSHI_ACCESS_KEY || "",
@@ -41,7 +44,28 @@ async function kalshi(method, path, body) {
     body: body ? JSON.stringify(body) : undefined
   });
   const j = await r.json().catch(() => ({}));
-  return { status: r.status, json: j };
+  return { status: r.status, json: j, base };
+}
+
+function endpointLevelError(r) {
+  const msg = JSON.stringify(r.json || {});
+  return r.status === 0 || r.status === 404 || r.status === 410 ||
+    /switch to the V2|V2 endpoints|endpoint.*deprecated|not found/i.test(msg);
+}
+
+async function kalshi(method, path, body) {
+  const bases = goodBase ? [goodBase].concat(BASES.filter(b => b !== goodBase)) : BASES;
+  let last = null;
+  for (const base of bases) {
+    let r;
+    try { r = await kalshiAt(base, method, path, body); }
+    catch (e) { r = { status: 0, json: { error: String((e && e.message) || e) }, base }; }
+    if (r.status >= 200 && r.status < 300) { goodBase = base; return r; }
+    last = r;
+    // auth/param errors are the same everywhere — don't retry those on other hosts
+    if (!endpointLevelError(r)) return r;
+  }
+  return last;
 }
 
 module.exports = async (req, res) => {
@@ -60,7 +84,11 @@ module.exports = async (req, res) => {
   try {
     if (req.method === "GET") {
       const bal = await kalshi("GET", "/trade-api/v2/portfolio/balance");
-      return res.status(200).json({ balance: bal.json && bal.json.balance, kalshiStatus: bal.status });
+      if (bal.status >= 200 && bal.status < 300) {
+        return res.status(200).json({ balance: bal.json && bal.json.balance, via: bal.base });
+      }
+      const msg = (bal.json && ((bal.json.error && bal.json.error.message) || bal.json.message || bal.json.error)) || ("kalshi " + bal.status);
+      return res.status(502).json({ error: String(msg), via: bal.base });
     }
     if (req.method === "POST") {
       const b = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
@@ -82,10 +110,10 @@ module.exports = async (req, res) => {
       order[side + "_price"] = price;
       const r = await kalshi("POST", "/trade-api/v2/portfolio/orders", order);
       if (r.status >= 200 && r.status < 300) {
-        return res.status(200).json({ order: (r.json && r.json.order) || r.json });
+        return res.status(200).json({ order: (r.json && r.json.order) || r.json, via: r.base });
       }
-      const msg = (r.json && ((r.json.error && r.json.error.message) || r.json.message)) || ("kalshi " + r.status);
-      return res.status(r.status >= 400 && r.status < 500 ? r.status : 502).json({ error: msg });
+      const msg = (r.json && ((r.json.error && r.json.error.message) || r.json.message || r.json.error)) || ("kalshi " + r.status);
+      return res.status(r.status >= 400 && r.status < 500 && r.status !== 404 ? r.status : 502).json({ error: String(msg), via: r.base });
     }
     return res.status(405).json({ error: "method not allowed" });
   } catch (e) {

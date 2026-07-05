@@ -1,26 +1,38 @@
-// Kalshi Desk — MARKET FEED (Vercel serverless, srv feed-1).
-// Does the heavy tri-lane market sweep SERVER-SIDE (no CORS, no browser rate-limit
-// races) and returns one compact pool JSON. Cached in-memory per warm lambda for 45s,
-// so the whole dashboard costs ~1 request/minute instead of ~80.
+// Kalshi Desk — MARKET FEED (Vercel serverless, srv feed-2).
+// The desk's ONLY heavy sweeper. Browser makes 1 request; this function talks to
+// Kalshi with rate-limit discipline (sequential pages, 429 retry with backoff),
+// caches the shaped pool for 45s, and caches the event→category map for 30 min.
 //
-//   GET /api/feed            -> { ts, ageMs, pool: [{t,ticker,c,yes,closeTs,vol,bid,ask}] }
+//   GET /api/feed             -> { ts, ageMs, pool: [{t,ticker,c,yes,closeTs,vol,bid,ask}], diag }
 //   GET /api/feed?tickers=A,B -> { ts, quotes: { TICKER: {yes,bid,ask} } }  (fast lane)
 //
+// Design: the WINDOW query (/markets with min/max_close_ts) is the source of truth —
+// Kalshi filters by close time server-side, so every market that settles within 18.5h
+// arrives regardless of series naming. Categories come from a cached /events map
+// (event_ticker -> official category); ticker regex is only the fallback.
 // Public market data only — no keys, no secret required.
 const KBASE = "https://api.elections.kalshi.com/trade-api/v2";
 
-let cache = { ts: 0, pool: null };
-let seriesCache = { ts: 0, list: null };
+let cache = { ts: 0, pool: null, diag: null };
+let evCatCache = { ts: 0, map: null };
 let inflight = null;
 
-async function kfetch(path, ms) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), ms || 9000);
-  try {
-    const r = await fetch(KBASE + path, { signal: ctrl.signal });
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    return await r.json();
-  } finally { clearTimeout(t); }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function kfetch(path, ms, retries) {
+  for (let a = 0; ; a++) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), ms || 9000);
+    try {
+      const r = await fetch(KBASE + path, { signal: ctrl.signal });
+      if (r.status === 429 || r.status >= 500) {
+        if (a < (retries != null ? retries : 2)) { clearTimeout(t); await sleep(1200 * (a + 1)); continue; }
+        throw new Error("HTTP " + r.status);
+      }
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return await r.json();
+    } finally { clearTimeout(t); }
+  }
 }
 
 function tickerCat(t) {
@@ -46,7 +58,25 @@ function kalshiCat(evCat, ticker, title) {
 const num = v => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
 const cents = (c, d) => { const n = num(c); if (n > 0) return Math.round(n); return Math.round(num(d) * 100); };
 
-function shape(raw) {
+// event_ticker -> official category, cached 30 min (events list is big but stable)
+async function eventCats(diag) {
+  if (evCatCache.map && Date.now() - evCatCache.ts < 1800000) return evCatCache.map;
+  const map = {};
+  let cursor = "", pages = 0;
+  try {
+    do {
+      const j = await kfetch("/events?limit=200&status=open" + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""), 9000, 1);
+      (j.events || []).forEach(ev => { if (ev.event_ticker) map[ev.event_ticker] = ev.category || ""; });
+      cursor = j.cursor || "";
+      pages++;
+    } while (cursor && pages < 15);
+  } catch (e) { diag.push("evcats:" + String((e && e.message) || e)); }
+  diag.push("evcats:" + Object.keys(map).length + "/" + pages + "pg");
+  if (Object.keys(map).length) evCatCache = { ts: Date.now(), map };
+  return map;
+}
+
+function shape(raw, evMap) {
   const nowT = Date.now();
   const winMs = 1205 * 60000; // 18h35m + margin
   const out = [];
@@ -63,7 +93,7 @@ function shape(raw) {
     const yes = last > 0 ? last : Math.round((bid + ask) / 2);
     const closeTs = new Date(m.close_time).getTime();
     const vol = num(m.volume_24h) || num(m.volume_24h_fp) || num(m.volume) || num(m.volume_fp) || num(m.liquidity_dollars);
-    const c = m._evcat || tickerCat(m.ticker + " " + (m.title || ""));
+    const c = kalshiCat(evMap[m.event_ticker], m.ticker, m.title);
     if (c === "WEATHER") return;
     if (!(yes >= 5 && yes <= 95)) return;
     if (!(closeTs - nowT > 4 * 60000 && closeTs - nowT < winMs)) return;
@@ -86,55 +116,20 @@ async function sweep() {
   const nowS = Math.floor(t0 / 1000);
   const W = "&min_close_ts=" + (nowS + 240) + "&max_close_ts=" + (nowS + 72300);
   const diag = [];
-  const laneEvents = (async () => {
-    let cursor = "", raw = [], pages = 0;
-    do {
-      const j = await kfetch("/events?limit=200&status=open&with_nested_markets=true" + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""), 9000);
-      (j.events || []).forEach(ev => {
-        const cat = kalshiCat(ev.category, ev.event_ticker, ev.title);
-        (ev.markets || []).forEach(m => { m._evcat = cat; raw.push(m); });
-      });
-      cursor = j.cursor || "";
-      pages++;
-    } while (cursor && pages < 10 && raw.length < 6000 && Date.now() - t0 < 25000);
-    diag.push("events:" + raw.length + "/" + pages + "pg");
-    return raw;
-  })();
-  const laneWindow = (async () => {
-    let cursor = "", raw = [], pages = 0;
-    do {
-      const j = await kfetch("/markets?limit=1000&status=open" + W + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""), 9000);
-      raw = raw.concat(j.markets || []);
-      cursor = j.cursor || "";
-      pages++;
-    } while (cursor && pages < 10 && raw.length < 8000 && Date.now() - t0 < 25000);
-    diag.push("window:" + raw.length + "/" + pages + "pg");
-    return raw;
-  })();
-  const laneSeries = (async () => {
-    const staticList = ["KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M", "KXBTCD", "KXETHD", "KXBTC", "KXETH", "KXXRPD", "KXSOLD", "KXDOGED", "KXINX", "KXINXD", "KXINXU", "KXNASDAQ100", "KXNASDAQ100D", "KXNASDAQ100U", "KXBTCUP", "KXETHUP", "KXMLBGAME", "KXWNBAGAME", "KXNBAGAME", "KXNHLGAME", "KXUFCFIGHT", "KXWCTOTAL", "KXWCSPREAD", "KXWCADVANCE"];
-    let discovered = (seriesCache.list && Date.now() - seriesCache.ts < 1800000) ? seriesCache.list : null;
-    if (!discovered) {
-      const cats = ["Sports", "Crypto", "Financials", "Economics", "World", "Entertainment", "Politics", "Science and Technology"];
-      const rs = await Promise.all(cats.map(c => kfetch("/series?category=" + encodeURIComponent(c), 8000).catch(() => null)));
-      let ser = [];
-      rs.forEach(j => { if (j && j.series) ser = ser.concat(j.series); });
-      discovered = ser.map(s => s.ticker).filter(Boolean);
-      if (discovered.length) seriesCache = { ts: Date.now(), list: discovered };
-    }
-    const spFirst = s => /GAME|MATCH|FIGHT|NBA|NFL|MLB|NHL|WNBA|UFC|WC|FIFWC|FIFA|SOCCER|TENNIS|GOLF|F1|EPL|LALIGA|SERIEA|BUNDES/i.test(s) ? 0 : 1;
-    const series = Array.from(new Set(staticList.concat(discovered))).sort((a, b) => spFirst(a) - spFirst(b)).slice(0, 48);
-    const raw = [];
-    for (let i = 0; i < series.length; i += 8) {
-      if (Date.now() - t0 > 25000) break;
-      const rs = await Promise.all(series.slice(i, i + 8).map(s => kfetch("/markets?limit=100&status=open&series_ticker=" + s, 8000).catch(() => null)));
-      rs.forEach(j => { if (j && j.markets) raw.push.apply(raw, j.markets); });
-    }
-    diag.push("series:" + raw.length);
-    return raw;
-  })();
-  const rs = await Promise.all([laneEvents.catch(() => []), laneWindow.catch(() => []), laneSeries.catch(() => [])]);
-  const pool = shape(rs[0].concat(rs[1], rs[2]));
+  // source of truth: the close-window query — Kalshi filters by settle time server-side
+  let raw = [], cursor = "", pages = 0;
+  do {
+    const j = await kfetch("/markets?limit=1000&status=open" + W + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""), 9000, 2);
+    raw = raw.concat(j.markets || []);
+    cursor = j.cursor || "";
+    pages++;
+  } while (cursor && pages < 12 && raw.length < 10000 && Date.now() - t0 < 30000);
+  diag.push("window:" + raw.length + "/" + pages + "pg");
+  const evMap = await eventCats(diag);
+  const pool = shape(raw, evMap);
+  const nSp = pool.filter(m => m.c === "SPORTS").length;
+  const nCr = pool.filter(m => m.c === "CRYPTO").length;
+  diag.push("pool:" + pool.length + " sports:" + nSp + " crypto:" + nCr);
   return { pool, diag };
 }
 
@@ -145,9 +140,8 @@ module.exports = async (req, res) => {
     const url = new URL(req.url, "http://x");
     const tickers = url.searchParams.get("tickers");
     if (tickers) {
-      // fast quote lane: one upstream call, up to 90 tickers
       const list = tickers.split(",").slice(0, 90);
-      const j = await kfetch("/markets?limit=100&tickers=" + encodeURIComponent(list.join(",")), 8000);
+      const j = await kfetch("/markets?limit=100&tickers=" + encodeURIComponent(list.join(",")), 8000, 1);
       const quotes = {};
       (j.markets || []).forEach(m => {
         const bid = cents(m.yes_bid, m.yes_bid_dollars);
@@ -158,15 +152,18 @@ module.exports = async (req, res) => {
       });
       return res.status(200).json({ ts: Date.now(), quotes });
     }
-    if (cache.pool && Date.now() - cache.ts < 45000) {
+    if (cache.pool && cache.pool.length && Date.now() - cache.ts < 45000) {
       return res.status(200).json({ ts: cache.ts, ageMs: Date.now() - cache.ts, cached: true, pool: cache.pool, diag: cache.diag });
     }
     if (!inflight) inflight = sweep().finally(() => { inflight = null; });
     const { pool, diag } = await inflight;
     if (pool.length) cache = { ts: Date.now(), pool, diag };
+    else if (cache.pool && cache.pool.length) {
+      return res.status(200).json({ ts: cache.ts, ageMs: Date.now() - cache.ts, stale: true, pool: cache.pool, diag: cache.diag.concat(diag) });
+    }
     return res.status(200).json({ ts: Date.now(), ageMs: 0, cached: false, pool, diag });
   } catch (e) {
-    if (cache.pool) return res.status(200).json({ ts: cache.ts, ageMs: Date.now() - cache.ts, stale: true, pool: cache.pool, diag: cache.diag });
+    if (cache.pool && cache.pool.length) return res.status(200).json({ ts: cache.ts, ageMs: Date.now() - cache.ts, stale: true, pool: cache.pool, diag: cache.diag });
     return res.status(502).json({ error: String((e && e.message) || e) });
   }
 };

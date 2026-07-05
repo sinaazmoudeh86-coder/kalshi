@@ -7,6 +7,7 @@ const crypto = require("crypto");
 // and lock onto whichever accepts the request.
 const BASES = [
   "https://api.elections.kalshi.com",
+  "https://external-api.kalshi.com",
   "https://api.kalshi.com",
   "https://trading-api.kalshi.com"
 ];
@@ -101,12 +102,15 @@ module.exports = async (req, res) => {
       const probe = {
         ticker: "KXFAKEDIAG-00JAN01-T1",
         client_order_id: crypto.randomUUID(),
-        action: "buy", side: "yes", count: 1, type: "limit", yes_price: 1
+        side: "bid", count: "1.00", price: "0.0100",
+        time_in_force: "good_till_canceled",
+        self_trade_prevention_type: "taker_at_cross",
+        post_only: false, cancel_order_on_pause: false, reduce_only: false
       };
       const out = {};
       for (const base of BASES) {
         try {
-          const r = await kalshiAt(base, "POST", "/trade-api/v2/portfolio/orders", probe);
+          const r = await kalshiAt(base, "POST", "/trade-api/v2/portfolio/events/orders", probe);
           out[base] = { status: r.status, body: JSON.stringify(r.json).slice(0, 300) };
         } catch (e) { out[base] = { status: 0, body: String((e && e.message) || e) }; }
       }
@@ -129,21 +133,33 @@ module.exports = async (req, res) => {
       if (count * price > 3000) {
         return res.status(400).json({ error: "order exceeds $30 cost cap" });
       }
+      // Kalshi V2 order shape (May 2026): single-book YES-side quoting, fixed-point dollars.
+      // buy YES = bid at yes price; buy NO = ask (sell YES) at 1 - no price.
+      const yesPrice = side === "yes" ? price : (100 - price);
       const order = {
         ticker,
         client_order_id: crypto.randomUUID(),
-        action: "buy",
-        side,
-        count,
-        type: "limit"
+        side: side === "yes" ? "bid" : "ask",
+        count: count.toFixed(2),
+        price: (yesPrice / 100).toFixed(4),
+        time_in_force: "good_till_canceled",
+        self_trade_prevention_type: "taker_at_cross",
+        post_only: false,
+        cancel_order_on_pause: false,
+        reduce_only: false
       };
-      order[side + "_price"] = price;
-      const r = await kalshi("POST", "/trade-api/v2/portfolio/orders", order);
-      if (r.status >= 200 && r.status < 300) {
-        return res.status(200).json({ order: (r.json && r.json.order) || r.json, via: r.base });
+      let r = await kalshi("POST", "/trade-api/v2/portfolio/events/orders", order);
+      // last-resort fallback to the legacy endpoint (e.g. demo envs)
+      if (r.status === 404) {
+        const legacy = { ticker, client_order_id: crypto.randomUUID(), action: "buy", side, count, type: "limit" };
+        legacy[side + "_price"] = price;
+        r = await kalshi("POST", "/trade-api/v2/portfolio/orders", legacy);
       }
-      const msg = (r.json && ((r.json.error && r.json.error.message) || r.json.message || r.json.error)) || ("kalshi " + r.status);
-      return res.status(r.status >= 400 && r.status < 500 && r.status !== 404 ? r.status : 502).json({ error: String(msg), via: r.base });
+      if (r.status >= 200 && r.status < 300) {
+        return res.status(200).json({ order: (r.json && (r.json.order || r.json)), via: r.base });
+      }
+      const msg = (r.json && ((r.json.error && r.json.error.message) || r.json.message)) || JSON.stringify(r.json || {}).slice(0, 200) || ("kalshi " + r.status);
+      return res.status(r.status >= 400 && r.status < 500 && r.status !== 404 && r.status !== 410 ? r.status : 502).json({ error: String(msg), via: r.base });
     }
     return res.status(405).json({ error: "method not allowed" });
   } catch (e) {

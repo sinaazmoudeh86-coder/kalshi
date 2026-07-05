@@ -1,9 +1,9 @@
-# Kalshi Live Desk — DEPLOYMENT (BUILD v80 · Kalshi-only, rotating-ladder feed)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v81 · Kalshi-only, rotating-ladder feed)
 
 3 files + this README. The repo root must look exactly like this:
 
 ```
-index.html      <- the dashboard (header must say BUILD v80 after deploy)
+index.html      <- the dashboard (header must say BUILD v81 after deploy)
 vercel.json     <- proxies /api/kalshi/* to Kalshi's market-data API + feed budget
 api/
   trade.js      <- signed order placement + portfolio sync (needs env vars)
@@ -17,9 +17,16 @@ api/
    inside a folder named `api`.
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v80**.
+4. Check the header — it must say **BUILD v81**.
 
-## What v80 changes — rotating-ladder sweep (no more bottleneck)
+## What v81 fixes
+
+- **`post only cross` rejections**: quotes are up to ~60s stale, so on fast
+  markets a maker order priced safely can land on the moved ask. `api/trade.js`
+  now retries such a rejection ONCE as a plain limit at the SAME price — the
+  limit still caps cost; the desk takes the fill instead of voiding the entry.
+
+## What v80 changed — rotating-ladder sweep (no more bottleneck)
 
 - The feed now sweeps a close-time LADDER rung by rung: 0–30m, 30–60m, then
   hourly out to 12h (plus a 12–20h rung to feed the sports 18h watchlist),

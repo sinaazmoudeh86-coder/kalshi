@@ -189,6 +189,14 @@ module.exports = async (req, res) => {
         reduce_only: false
       };
       let r = await kalshi("POST", "/trade-api/v2/portfolio/events/orders", order);
+      // stale-quote guard: if a post-only maker order would cross (the book moved
+      // since the dashboard's last quote), retry ONCE as a plain limit at the SAME
+      // price — the limit still caps cost; we accept the fill instead of rejecting
+      if (r.status === 400 && order.post_only && /post.?only|cross/i.test(JSON.stringify(r.json || {}))) {
+        order.post_only = false;
+        order.client_order_id = crypto.randomUUID();
+        r = await kalshi("POST", "/trade-api/v2/portfolio/events/orders", order);
+      }
       // last-resort fallback to the legacy endpoint (e.g. demo envs)
       if (r.status === 404) {
         const legacy = { ticker, client_order_id: crypto.randomUUID(), action: "buy", side, count, type: "limit" };

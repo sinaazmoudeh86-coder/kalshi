@@ -1719,6 +1719,7 @@
     <div style="display: flex; align-items: baseline; gap: 14px;">
       <div style="font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 17px; letter-spacing: 0.08em; color: #e6e9ef;">KALSHI PAPER DESK</div>
       <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7d8697;">{{ todayLabel }}</div>
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4a5261;">{{ buildTag }}</div>
       <div style="font-size: 11px; color: {{ dataBadgeColor }}; border: 1px solid {{ dataBadgeBorder }}; border-radius: 3px; padding: 2px 8px; letter-spacing: 0.06em;">{{ dataBadge }}</div>
       <div style="font-size: 11px; color: #7d8697; border: 1px solid #2a303c; border-radius: 3px; padding: 2px 8px; letter-spacing: 0.06em;">$25 FLAT STAKES</div>
     </div>
@@ -1968,6 +1969,11 @@
           <button onClick="{{ toggleEditor }}" style="background: none; border: 1px solid #2a303c; border-radius: 3px; color: #7d8697; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.06em; padding: 3px 10px; cursor: pointer;" style-hover="border-color: #3a465c; color: #e6e9ef;">{{ editorBtnLabel }}</button>
         </div>
         <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #7d8697;">{{ poolSummary }}</div>
+        <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 3px;">
+          <sc-for list="{{ feedDiag }}" as="d" hint-placeholder-count="2">
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: #5c6474; line-height: 1.4;">{{ d.line }}</div>
+          </sc-for>
+        </div>
         <sc-if value="{{ editorOpen }}" hint-placeholder-val="{{ false }}">
           <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
             <div style="font-size: 10px; color: #8b93a3; line-height: 1.5;">Paste the real markets you see on kalshi.com, one per line:<br>Market question | YES price in ¢ | category | minutes to close (≤60)</div>
@@ -2044,9 +2050,8 @@ class Component extends DCLogic {
   mapKalshi(j) {
     const nowT = Date.now();
     const num = v => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
-    // Kalshi returns prices either as integer cents (last_price) or dollar strings (last_price_dollars)
     const cents = (c, d) => { const n = num(c); if (n > 0) return Math.round(n); return Math.round(num(d) * 100); };
-    return (j.markets || [])
+    const mapped = (j.markets || [])
       .filter(m => !m.status || m.status === "active")
       .map(m => {
         const bid = cents(m.yes_bid, m.yes_bid_dollars);
@@ -2054,17 +2059,19 @@ class Component extends DCLogic {
         const last = cents(m.last_price, m.last_price_dollars);
         const yes = last > 0 ? last : Math.round((bid + ask) / 2);
         const closeTs = new Date(m.close_time).getTime();
-        const vol = num(m.volume_24h) || num(m.volume_24h_fp) || num(m.volume) || num(m.volume_fp);
+        const vol = num(m.volume_24h) || num(m.volume_24h_fp) || num(m.volume) || num(m.volume_fp) || num(m.liquidity_dollars);
         return {
           t: (m.title || m.ticker) + (m.yes_sub_title && m.yes_sub_title.length < 60 ? " \u2014 " + m.yes_sub_title : ""),
           ticker: m.ticker || "",
           c: this.tickerCat(m.ticker + " " + (m.title || "")),
-          yes, closeTs, vol
+          yes, closeTs, vol, _bid: bid, _ask: ask
         };
       })
-      .filter(m => m.vol > 50 && m.yes >= 5 && m.yes <= 95 && m.closeTs - nowT > 5 * 60000 && m.closeTs - nowT < 75 * 60000)
-      .sort((a, b) => b.vol - a.vol)
-      .slice(0, 40);
+      .filter(m => m.yes >= 5 && m.yes <= 95 && m.closeTs - nowT > 5 * 60000 && m.closeTs - nowT < 75 * 60000);
+    // primary: real traded volume; fallback: live two-sided quotes
+    let pool = mapped.filter(m => m.vol > 50);
+    if (pool.length < 3) pool = mapped.filter(m => m._bid > 0 && m._ask < 100);
+    return pool.sort((a, b) => b.vol - a.vol).slice(0, 40);
   }
 
   async fetchPolymarket() {
@@ -2091,33 +2098,56 @@ class Component extends DCLogic {
   async fetchLive() {
     const KBASE = "https://api.elections.kalshi.com/trade-api/v2";
     const nowS = Math.floor(Date.now() / 1000);
-    const KQ = "/markets?limit=1000&status=open&min_close_ts=" + (nowS + 300) + "&max_close_ts=" + (nowS + 4500);
-    const KURL = KBASE + KQ;
-    const sources = [
-      { name: "KALSHI", base: "/api/kalshi", fn: async () => this.mapKalshi(await this.fetchJson("/api/kalshi" + KQ, 8000)) },
-      { name: "KALSHI DIRECT", base: KBASE, fn: async () => this.mapKalshi(await this.fetchJson(KURL)) },
-      { name: "KALSHI VIA RELAY", base: null, fn: async () => this.mapKalshi(await this.fetchJson("https://api.allorigins.win/raw?url=" + encodeURIComponent(KURL), 15000)) },
-      { name: "KALSHI VIA RELAY 2", base: null, fn: async () => this.mapKalshi(await this.fetchJson("https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(KURL), 15000)) },
-      { name: "POLYMARKET", base: null, fn: () => this.fetchPolymarket() }
-    ];
-    for (const s of sources) {
+    const W = "&min_close_ts=" + (nowS + 300) + "&max_close_ts=" + (nowS + 4500);
+    const Q1 = "/markets?limit=1000&status=open" + W;
+    const Q2 = "/markets?limit=1000&status=open";
+    const diag = [];
+    const tryKalshi = async (name, base, q, wrap) => {
+      const url = wrap ? wrap(base + q) : base + q;
       try {
-        const pool = await s.fn();
-        if (pool && pool.length >= 3) {
-          this.livePool = pool;
-          this.dataMode = "live";
-          this.liveSource = s.name;
-          this.kalshiBase = s.base || null;
-          this.setState({ rev: this.state.rev + 1 });
-          clearTimeout(this.refetchT);
-          this.refetchT = setTimeout(() => this.fetchLive(), 300000);
-          return;
-        }
-      } catch (e) {}
+        const j = await this.fetchJson(url, wrap ? 15000 : 10000);
+        const total = (j.markets || []).length;
+        const pool = this.mapKalshi(j);
+        diag.push(name + ": " + total + " markets, " + pool.length + " tradable sub-1h");
+        if (pool.length >= 3) return { pool, base: wrap ? null : base, name };
+      } catch (e) {
+        diag.push(name + ": " + (e && e.message ? e.message : "failed"));
+      }
+      return null;
+    };
+    const attempts = [
+      () => tryKalshi("KALSHI PROXY", "/api/kalshi", Q1),
+      () => tryKalshi("KALSHI PROXY (wide)", "/api/kalshi", Q2),
+      () => tryKalshi("KALSHI DIRECT", KBASE, Q1),
+      () => tryKalshi("KALSHI RELAY", KBASE, Q1, u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u)),
+      () => tryKalshi("KALSHI RELAY 2", KBASE, Q1, u => "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(u)),
+      async () => {
+        try {
+          const pool = await this.fetchPolymarket();
+          diag.push("POLYMARKET: " + pool.length + " tradable sub-1h");
+          if (pool.length >= 3) return { pool, base: null, name: "POLYMARKET" };
+        } catch (e) { diag.push("POLYMARKET: " + (e && e.message ? e.message : "failed")); }
+        return null;
+      }
+    ];
+    let winner = null;
+    for (const a of attempts) {
+      winner = await a();
+      if (winner) break;
     }
-    this.dataMode = "offline";
-    clearTimeout(this.refetchT);
-    this.refetchT = setTimeout(() => this.fetchLive(), 60000);
+    this.feedDiag = diag;
+    if (winner) {
+      this.livePool = winner.pool;
+      this.dataMode = "live";
+      this.liveSource = winner.name;
+      this.kalshiBase = winner.base;
+      clearTimeout(this.refetchT);
+      this.refetchT = setTimeout(() => this.fetchLive(), 300000);
+    } else {
+      this.dataMode = "offline";
+      clearTimeout(this.refetchT);
+      this.refetchT = setTimeout(() => this.fetchLive(), 60000);
+    }
     this.setState({ rev: this.state.rev + 1 });
   }
 
@@ -2522,6 +2552,8 @@ class Component extends DCLogic {
       catBoosts,
       candCount: cands.length,
       resetLog: () => this.resetLog(),
+      buildTag: "BUILD v7",
+      feedDiag: (this.feedDiag || ["feed check pending\u2026"]).map(l => ({ line: l })),
       dataBadge: this.customPool ? "YOUR MARKETS \u00b7 " + this.customPool.length : (this.dataMode === "live" ? "\u25cf LIVE \u00b7 " + (this.liveSource || "KALSHI") : (this.dataMode === "offline" ? "FEED OFFLINE \u2014 RETRYING" : "CONNECTING\u2026")),
       dataBadgeColor: this.customPool ? "#5aa7e8" : (this.dataMode === "live" ? "#4fce7f" : (this.dataMode === "offline" ? "#e5636a" : "#eab54e")),
       dataBadgeBorder: this.customPool ? "#274058" : (this.dataMode === "live" ? "#234533" : (this.dataMode === "offline" ? "#3a2226" : "#4a3c1a")),

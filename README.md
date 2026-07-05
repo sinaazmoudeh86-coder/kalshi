@@ -1,9 +1,9 @@
-# Kalshi Live Desk — DEPLOYMENT (BUILD v77 · Kalshi-only, server feed)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v80 · Kalshi-only, rotating-ladder feed)
 
 3 files + this README. The repo root must look exactly like this:
 
 ```
-index.html      <- the dashboard (header must say BUILD v77 after deploy)
+index.html      <- the dashboard (header must say BUILD v80 after deploy)
 vercel.json     <- proxies /api/kalshi/* to Kalshi's market-data API + feed budget
 api/
   trade.js      <- signed order placement + portfolio sync (needs env vars)
@@ -17,9 +17,44 @@ api/
    inside a folder named `api`.
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v77**.
+4. Check the header — it must say **BUILD v80**.
 
-## What v77 fixes
+## What v80 changes — rotating-ladder sweep (no more bottleneck)
+
+- The feed now sweeps a close-time LADDER rung by rung: 0–30m, 30–60m, then
+  hourly out to 12h (plus a 12–20h rung to feed the sports 18h watchlist),
+  then restarts at 30m. Each sweep: re-sweep 0–30m (always fresh) + the next
+  3 rotating rungs, WIPE each swept span in the stored pool and replace it
+  with what Kalshi just returned. Small windows page in 1–2 requests, so the
+  sweep never stalls on pagination.
+- Fast crypto/index series probed on every sweep; markets that settle or go
+  unconfirmed for 50 min are pruned automatically.
+- Feed cache dropped to 20s and the dashboard polls it every 60s — the full
+  ladder cycles roughly every 4–5 minutes.
+- Feed diag reports each rung (`rung30-60m:…`) for debugging.
+
+## What v79 fixed
+
+- **Time-sliced sweep**: the feed used ONE 20h window query capped at 12 pages —
+  Kalshi returned the same static prefix every sweep and everything behind it was
+  never seen. The window is now swept in close-time slices (0–2h, 2–6h, 6–12h,
+  12–20h), nearest-settling first, each with its own page budget — soon-settling
+  markets can never be crowded out.
+- **Fresh markets no longer dropped**: brand-new fast markets (e.g. each new
+  15-min crypto strike) start at ~$0 volume and were silently filtered out.
+  A tight two-sided book now qualifies a market even before volume accrues.
+- Feed diag now reports per-slice counts (`win4-120m:…`) for debugging.
+
+## What v78 fixed
+
+- **"LIVE ORDER rejected (invalid order)"**: slow-market maker orders were priced
+  at bid+1¢, which EQUALS the ask when the spread is 1¢ — a crossing post-only
+  order, which Kalshi rejects. Maker price is now capped at ask−1¢ (joins the bid
+  on 1¢ spreads), so resting orders never cross.
+- `api/trade.js` now forwards Kalshi's full error (code · message · details) and
+  echoes the order payload sent, so any future rejection is self-diagnosing.
+
+## What v77 fixed
 
 - **AUTO HORIZON deadlock**: the entry window now widens based on how many
   markets settle INSIDE it (not on total watchlist size). A rich watchlist

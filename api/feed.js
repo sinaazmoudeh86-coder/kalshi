@@ -1,18 +1,29 @@
-// Kalshi Desk — MARKET FEED (Vercel serverless, srv feed-2).
+// Kalshi Desk — MARKET FEED (Vercel serverless, srv feed-4 · rotating ladder).
 // The desk's ONLY heavy sweeper. Browser makes 1 request; this function talks to
-// Kalshi with rate-limit discipline (sequential pages, 429 retry with backoff),
-// caches the shaped pool for 45s, and caches the event→category map for 30 min.
+// Kalshi with rate-limit discipline (sequential pages, 429 retry with backoff).
 //
 //   GET /api/feed             -> { ts, ageMs, pool: [{t,ticker,c,yes,closeTs,vol,bid,ask}], diag }
 //   GET /api/feed?tickers=A,B -> { ts, quotes: { TICKER: {yes,bid,ask} } }  (fast lane)
 //
-// Design: the WINDOW query (/markets with min/max_close_ts) is the source of truth —
-// Kalshi filters by close time server-side, so every market that settles within 18.5h
-// arrives regardless of series naming. Categories come from a cached /events map
-// (event_ticker -> official category); ticker regex is only the fallback.
-// Public market data only — no keys, no secret required.
+// ROTATING LADDER SWEEP: instead of one giant window query that bottlenecks on
+// pagination, the close-time ladder is swept rung by rung — 0-30m, 30-60m, then
+// hourly out to 12h (plus a 12-20h rung so the sports 18h watchlist stays fed),
+// then restarts at 30m. Each /api/feed call sweeps the 0-30m rung (always fresh)
+// + the next few rotating rungs, WIPES the stored markets in each swept span and
+// replaces them with what Kalshi returned. Small windows page in 1-2 requests,
+// so the sweep always keeps moving. Fast crypto/index series are probed every
+// call on top. Public market data only — no keys.
 const KBASE = "https://api.elections.kalshi.com/trade-api/v2";
 
+// close-time ladder in minutes: [from, to]
+const RUNGS = [
+  [4, 30], [30, 60], [60, 120], [120, 180], [180, 240], [240, 300], [300, 360],
+  [360, 420], [420, 480], [480, 540], [540, 600], [600, 660], [660, 720],
+  [720, 1205] // sports 18h watchlist rung
+];
+
+let store = { byTicker: {} }; // persistent pool across warm invocations
+let rungIdx = 1;              // rotating pointer (rung 0 is swept every call)
 let cache = { ts: 0, pool: null, diag: null };
 let evCatCache = { ts: 0, map: null };
 let inflight = null;
@@ -76,9 +87,10 @@ async function eventCats(diag) {
   return map;
 }
 
+// raw Kalshi markets -> shaped, filtered desk markets (no quotas here)
 function shape(raw, evMap) {
   const nowT = Date.now();
-  const winMs = 1205 * 60000; // 18h35m + margin
+  const winMs = 1205 * 60000;
   const out = [];
   const seen = {};
   raw.forEach(m => {
@@ -102,9 +114,15 @@ function shape(raw, evMap) {
       ticker: m.ticker, c, yes, closeTs, vol, bid, ask
     });
   });
-  let pool = out.filter(m => m.vol > 50);
-  if (pool.length < 3) pool = out.filter(m => m.bid > 0 && m.ask < 100);
-  const sorted = pool.sort((a, b) => b.vol - a.vol);
+  // volume OR a real two-sided book qualifies: brand-new fast markets (fresh 15-min
+  // crypto strikes) start at ~$0 volume but have tight live quotes
+  const filtered = out.filter(m => m.vol > 50 || (m.bid >= 3 && m.ask <= 97 && m.ask - m.bid <= 10));
+  return filtered.length ? filtered : out.filter(m => m.bid > 0 && m.ask < 100);
+}
+
+// per-category quotas so no category crowds out another
+function quotaPool(all) {
+  const sorted = all.slice().sort((a, b) => b.vol - a.vol);
   const sports = sorted.filter(m => m.c === "SPORTS").slice(0, 600);
   const crypto = sorted.filter(m => m.c === "CRYPTO").slice(0, 400);
   const other = sorted.filter(m => m.c !== "SPORTS" && m.c !== "CRYPTO").slice(0, 600);
@@ -113,39 +131,76 @@ function shape(raw, evMap) {
 
 async function sweep() {
   const t0 = Date.now();
-  const nowS = Math.floor(t0 / 1000);
-  const W = "&min_close_ts=" + (nowS + 240) + "&max_close_ts=" + (nowS + 72300);
   const diag = [];
-  // source of truth: the close-window query — Kalshi filters by settle time server-side
-  let raw = [], cursor = "", pages = 0;
-  do {
-    const j = await kfetch("/markets?limit=1000&status=open" + W + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""), 9000, 2);
-    raw = raw.concat(j.markets || []);
-    cursor = j.cursor || "";
-    pages++;
-  } while (cursor && pages < 12 && raw.length < 10000 && Date.now() - t0 < 30000);
-  diag.push("window:" + raw.length + "/" + pages + "pg");
-  // FAST-SERIES LANE: 15-min/hourly crypto + daily index series settle constantly
-  // (the desk's main sub-1h supply) but can be missed when the window query caps
-  // out on pagination — probe them directly and merge (shape() dedupes by ticker).
+  const evMap = await eventCats(diag);
+
+  // sweep one ladder rung: page its close-time span fully, WIPE the stored
+  // markets in that span, replace with what Kalshi just returned
+  const doRung = async (rung) => {
+    const nowS = Math.floor(Date.now() / 1000);
+    const W = "&min_close_ts=" + (nowS + rung[0] * 60) + "&max_close_ts=" + (nowS + rung[1] * 60);
+    let cursor = "", pages = 0, raw = [];
+    try {
+      do {
+        const j = await kfetch("/markets?limit=1000&status=open" + W + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""), 9000, 1);
+        raw = raw.concat(j.markets || []);
+        cursor = j.cursor || "";
+        pages++;
+      } while (cursor && pages < 6 && Date.now() - t0 < 40000);
+    } catch (e) { diag.push("rung" + rung[0] + "-" + rung[1] + "m:" + String((e && e.message) || e)); return; }
+    // WIPE the span, then replace
+    const lo = Date.now() + rung[0] * 60000, hi = Date.now() + rung[1] * 60000;
+    Object.keys(store.byTicker).forEach(k => {
+      const m = store.byTicker[k];
+      if (m.closeTs >= lo && m.closeTs < hi) delete store.byTicker[k];
+    });
+    const shaped = shape(raw, evMap);
+    const nowT = Date.now();
+    shaped.forEach(m => { m._seen = nowT; store.byTicker[m.ticker] = m; });
+    diag.push("rung" + rung[0] + "-" + rung[1] + "m:" + raw.length + "raw/" + pages + "pg\u2192" + shaped.length + (cursor ? "+more" : ""));
+  };
+
+  // cold store: prime the first rungs so the desk paints fast; warm store: always
+  // re-sweep rung 0 (freshest supply) + the next 3 rotating rungs
+  const cold = !Object.keys(store.byTicker).length;
+  const todo = [RUNGS[0]];
+  const nRot = cold ? 3 : 3;
+  for (let k = 0; k < nRot; k++) {
+    const r = RUNGS[1 + ((rungIdx - 1 + k) % (RUNGS.length - 1))];
+    if (todo.indexOf(r) < 0) todo.push(r);
+  }
+  rungIdx = 1 + ((rungIdx - 1 + nRot) % (RUNGS.length - 1));
+  for (const r of todo) {
+    if (Date.now() - t0 > 40000) { diag.push("ladder:time-boxed"); break; }
+    await doRung(r);
+  }
+
+  // FAST-SERIES LANE: 15-min/hourly crypto + daily index series, probed every call
   const fastSeries = ["KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M", "KXBTCD", "KXETHD", "KXBTC", "KXETH", "KXINXD", "KXNASDAQ100D"];
-  let fastN = 0;
+  let fastRaw = [];
   for (const s of fastSeries) {
-    if (Date.now() - t0 > 45000) break;
+    if (Date.now() - t0 > 48000) break;
     try {
       const j = await kfetch("/markets?limit=100&status=open&series_ticker=" + s, 8000, 1);
-      const ms = j.markets || [];
-      fastN += ms.length;
-      raw = raw.concat(ms);
+      fastRaw = fastRaw.concat(j.markets || []);
     } catch (e) {}
-    await sleep(250);
+    await sleep(200);
   }
-  diag.push("fast-series:" + fastN);
-  const evMap = await eventCats(diag);
-  const pool = shape(raw, evMap);
+  const fastShaped = shape(fastRaw, evMap);
+  const nowT2 = Date.now();
+  fastShaped.forEach(m => { m._seen = nowT2; store.byTicker[m.ticker] = m; }); // upsert, no wipe
+  diag.push("fast-series:" + fastShaped.length);
+
+  // prune: settled/closing markets and anything not re-confirmed within 50 min
+  Object.keys(store.byTicker).forEach(k => {
+    const m = store.byTicker[k];
+    if (m.closeTs - nowT2 < 4 * 60000 || nowT2 - (m._seen || 0) > 50 * 60000) delete store.byTicker[k];
+  });
+
+  const pool = quotaPool(Object.values(store.byTicker));
   const nSp = pool.filter(m => m.c === "SPORTS").length;
   const nCr = pool.filter(m => m.c === "CRYPTO").length;
-  diag.push("pool:" + pool.length + " sports:" + nSp + " crypto:" + nCr);
+  diag.push("pool:" + pool.length + " sports:" + nSp + " crypto:" + nCr + " store:" + Object.keys(store.byTicker).length);
   return { pool, diag };
 }
 
@@ -168,7 +223,8 @@ module.exports = async (req, res) => {
       });
       return res.status(200).json({ ts: Date.now(), quotes });
     }
-    if (cache.pool && cache.pool.length && Date.now() - cache.ts < 45000) {
+    // short cache (20s) — every cache miss advances the ladder, so the sweep keeps moving
+    if (cache.pool && cache.pool.length && Date.now() - cache.ts < 20000) {
       return res.status(200).json({ ts: cache.ts, ageMs: Date.now() - cache.ts, cached: true, pool: cache.pool, diag: cache.diag });
     }
     if (!inflight) inflight = sweep().finally(() => { inflight = null; });

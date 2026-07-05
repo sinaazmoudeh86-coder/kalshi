@@ -105,7 +105,7 @@ module.exports = async (req, res) => {
         side: "bid", count: "1.00", price: "0.0100",
         time_in_force: "good_till_canceled",
         self_trade_prevention_type: "taker_at_cross",
-        post_only: !!b.post_only, cancel_order_on_pause: false, reduce_only: false
+        post_only: false, cancel_order_on_pause: false, reduce_only: false
       };
       const out = {};
       for (const base of BASES) {
@@ -198,8 +198,11 @@ module.exports = async (req, res) => {
       if (r.status >= 200 && r.status < 300) {
         return res.status(200).json({ order: (r.json && (r.json.order || r.json)), via: r.base });
       }
-      const msg = (r.json && ((r.json.error && r.json.error.message) || r.json.message)) || JSON.stringify(r.json || {}).slice(0, 200) || ("kalshi " + r.status);
-      return res.status(r.status >= 400 && r.status < 500 && r.status !== 404 && r.status !== 410 ? r.status : 502).json({ error: String(msg), via: r.base });
+      // forward Kalshi's FULL error (code + message + details) — "invalid order"
+      // alone is undiagnosable from the dashboard
+      const ej = (r.json && r.json.error && typeof r.json.error === "object") ? r.json.error : (r.json || {});
+      const msg = [ej.code, ej.message || (r.json && r.json.message), ej.details].filter(Boolean).join(" \u00b7 ") || JSON.stringify(r.json || {}).slice(0, 200) || ("kalshi " + r.status);
+      return res.status(r.status >= 400 && r.status < 500 && r.status !== 404 && r.status !== 410 ? r.status : 502).json({ error: String(msg), sent: order, via: r.base });
     }
     return res.status(405).json({ error: "method not allowed" });
   } catch (e) {

@@ -2043,20 +2043,26 @@ class Component extends DCLogic {
   // Live pools keep only markets settling within 75 minutes (sub-1h desk).
   mapKalshi(j) {
     const nowT = Date.now();
+    const num = v => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
+    // Kalshi returns prices either as integer cents (last_price) or dollar strings (last_price_dollars)
+    const cents = (c, d) => { const n = num(c); if (n > 0) return Math.round(n); return Math.round(num(d) * 100); };
     return (j.markets || [])
-      .filter(m => (m.volume_24h || m.volume || 0) > 50)
+      .filter(m => !m.status || m.status === "active")
       .map(m => {
-        const yes = m.last_price || Math.round(((m.yes_bid || 0) + (m.yes_ask || 100)) / 2);
+        const bid = cents(m.yes_bid, m.yes_bid_dollars);
+        const ask = cents(m.yes_ask, m.yes_ask_dollars) || 100;
+        const last = cents(m.last_price, m.last_price_dollars);
+        const yes = last > 0 ? last : Math.round((bid + ask) / 2);
         const closeTs = new Date(m.close_time).getTime();
+        const vol = num(m.volume_24h) || num(m.volume_24h_fp) || num(m.volume) || num(m.volume_fp);
         return {
-          t: (m.title || m.ticker) + (m.yes_sub_title ? " \u2014 " + m.yes_sub_title : ""),
+          t: (m.title || m.ticker) + (m.yes_sub_title && m.yes_sub_title.length < 60 ? " \u2014 " + m.yes_sub_title : ""),
           ticker: m.ticker || "",
           c: this.tickerCat(m.ticker + " " + (m.title || "")),
-          yes, closeTs,
-          vol: m.volume_24h || m.volume || 0
+          yes, closeTs, vol
         };
       })
-      .filter(m => m.yes >= 5 && m.yes <= 95 && m.closeTs - nowT > 5 * 60000 && m.closeTs - nowT < 75 * 60000)
+      .filter(m => m.vol > 50 && m.yes >= 5 && m.yes <= 95 && m.closeTs - nowT > 5 * 60000 && m.closeTs - nowT < 75 * 60000)
       .sort((a, b) => b.vol - a.vol)
       .slice(0, 40);
   }
@@ -2084,7 +2090,8 @@ class Component extends DCLogic {
 
   async fetchLive() {
     const KBASE = "https://api.elections.kalshi.com/trade-api/v2";
-    const KQ = "/markets?limit=1000&status=open";
+    const nowS = Math.floor(Date.now() / 1000);
+    const KQ = "/markets?limit=1000&status=open&min_close_ts=" + (nowS + 300) + "&max_close_ts=" + (nowS + 4500);
     const KURL = KBASE + KQ;
     const sources = [
       { name: "KALSHI", base: "/api/kalshi", fn: async () => this.mapKalshi(await this.fetchJson("/api/kalshi" + KQ, 8000)) },

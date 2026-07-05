@@ -2280,6 +2280,7 @@ class Component extends DCLogic {
     const mapped = (j.markets || [])
       .filter(m => !m.status || m.status === "active")
       .filter(m => !m.mve_collection_ticker && !(m.ticker || "").includes("KXMVE") && !(m.event_ticker || "").includes("KXMVE"))
+      .filter(m => !/KXHIGH|KXLOW/i.test(m.ticker || "")) // weather disabled by desk policy
       .map(m => {
         const bid = cents(m.yes_bid, m.yes_bid_dollars);
         const ask = cents(m.yes_ask, m.yes_ask_dollars) || 100;
@@ -2356,7 +2357,7 @@ class Component extends DCLogic {
       return null;
     };
     const discoverSeries = async (base, wrap) => {
-      const cats = ["Crypto", "Financials", "Economics", "Climate and Weather", "Sports", "World", "Entertainment", "Politics", "Science and Technology"];
+      const cats = ["Crypto", "Financials", "Economics", "Sports", "World", "Entertainment", "Politics", "Science and Technology"];
       const lists = [];
       for (let i = 0; i < cats.length; i += 4) {
         const rs = await Promise.all(cats.slice(i, i + 4).map(c => {
@@ -2374,7 +2375,7 @@ class Component extends DCLogic {
       return fast.concat(rest).map(s => s.ticker).filter(Boolean);
     };
     const trySeries = async (base, wrap) => {
-      const staticList = ["KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M", "KXBTCD", "KXETHD", "KXBTC", "KXETH", "KXXRPD", "KXSOLD", "KXDOGED", "KXINX", "KXINXD", "KXINXU", "KXNASDAQ100", "KXNASDAQ100D", "KXNASDAQ100U", "KXBTCUP", "KXETHUP", "KXHIGHNY", "KXHIGHCHI", "KXHIGHLAX", "KXHIGHMIA", "KXHIGHDEN", "KXHIGHAUS", "KXHIGHPHIL", "KXMLBGAME", "KXWNBAGAME", "KXNBAGAME", "KXNHLGAME", "KXUFCFIGHT", "KXWCTOTAL", "KXWCSPREAD", "KXWCADVANCE"];
+      const staticList = ["KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M", "KXBTCD", "KXETHD", "KXBTC", "KXETH", "KXXRPD", "KXSOLD", "KXDOGED", "KXINX", "KXINXD", "KXINXU", "KXNASDAQ100", "KXNASDAQ100D", "KXNASDAQ100U", "KXBTCUP", "KXETHUP", "KXMLBGAME", "KXWNBAGAME", "KXNBAGAME", "KXNHLGAME", "KXUFCFIGHT", "KXWCTOTAL", "KXWCSPREAD", "KXWCADVANCE"];
       try {
         let discovered = (this.seriesCache && Date.now() - (this.seriesCacheTs || 0) < 1800000) ? this.seriesCache : null;
         if (!discovered) {
@@ -2616,13 +2617,7 @@ class Component extends DCLogic {
       return { ok: true, extra: Math.round(extra * 10) / 10, label: "crypto 0DTE: ITM favorite + stable tape wins by time decay", val: "\u00b1" + Math.round(range) + "\u00a2 " + (sideDrift >= 0 ? "+" : "") + sideDrift + "\u00a2", note: notes.join("; ") };
     }
     if (/KXHIGH|KXLOW|HIGH TEMP|LOW TEMP/.test(tk)) {
-      const off = /NY|MIA|PHIL/.test(tk) ? -4 : /CHI|AUS/.test(tk) ? -5 : /DEN/.test(tk) ? -6 : /LAX|LA /.test(tk) ? -7 : -5;
-      const lh = (new Date(now).getUTCHours() + off + 24) % 24;
-      if (side === "NO" && lh >= 5 && lh < 16) return { ok: false, extra: 0, label: "weather: high still ratcheting up \u2014 under-bets blocked until the afternoon peak passes", val: lh + ":00 local" };
-      let extra = 0, note = "", bandMax = 92;
-      if (side === "YES" && lh < 13) { extra += 2; note = "pre-peak: forecast risk still live"; }
-      if (lh >= 17 || lh < 5) { extra -= 1; bandMax = 96; note = "post-peak: high mostly locked \u2014 extreme-priced weather markets settle true ~98% historically"; }
-      return { ok: true, extra: Math.round(extra * 10) / 10, label: "weather diurnal: the high only ratchets up; certainty cheapens late", val: lh + ":00 local", note, bandMax };
+      return { ok: false, extra: 0, label: "weather markets disabled \u2014 desk trades high-probability fast markets only", val: "off" };
     }
     return { ok: true, extra: 0, label: "no domain model for this market family", val: "n/a" };
   }
@@ -2691,7 +2686,7 @@ class Component extends DCLogic {
         const volLabel = vol >= 1000000 ? (vol / 1000000).toFixed(1) + "M" : vol >= 1000 ? Math.round(vol / 1000) + "k" : String(vol);
         const gates = [
           { k: "T-MINUS", label: "settles within " + (this.horizonMins() >= 60 ? (this.horizonMins() / 60) + "h" : this.horizonMins() + "m"), pass: minsLeft >= 5 && minsLeft <= this.horizonMins(), val: minsLeft >= 60 ? (minsLeft / 60).toFixed(1) + "h" : Math.max(0, Math.round(minsLeft)) + "m" },
-          { k: "WIN ODDS", label: "price in 55\u2013" + (dl.bandMax || 92) + "\u00a2 favorite band", pass: pc >= 55 && pc <= (dl.bandMax || 92), val: pc + "\u00a2" },
+          { k: "WIN ODDS", label: "price in 70\u2013" + (dl.bandMax || 92) + "\u00a2 high-probability band", pass: pc >= 70 && pc <= (dl.bandMax || 92), val: pc + "\u00a2" },
           { k: "LIQUIDITY", label: "24h volume \u2265 $100", pass: vol >= 100, val: "$" + volLabel },
           { k: "NET EDGE", label: "signal \u2265 +" + reqE + "\u00a2 net of fees (learned + domain)", pass: netEdge >= reqE, val: (netEdge >= 0 ? "+" : "") + netEdge + "\u00a2" },
           { k: "SCORE", label: "composite \u00d7 category form \u2265 60", pass: score >= 60, val: String(score) },
@@ -2804,7 +2799,7 @@ class Component extends DCLogic {
           dirty = true;
           return;
         }
-        if (b.live && !b.imported && !b.result && b.ticker && !this.isWeatherBet(b.ticker) && Date.now() > b.closeTs + 15 * 60000) {
+        if (b.live && !b.imported && !b.result && !b.review && b.ticker && !this.isWeatherBet(b.ticker) && Date.now() > b.closeTs + 15 * 60000) {
           const g = groups[b.ticker + "|" + b.side];
           if (!g || !g.count) {
             b.result = "void"; b.settledBy = "real"; b.realPnl = 0;
@@ -2848,6 +2843,19 @@ class Component extends DCLogic {
             let yes = isFinite(c1) && c1 > 0 ? (c1 <= 1 ? c1 * 100 : c1) : (isFinite(c2) ? c2 * 100 : NaN);
             if (!isFinite(yes) && isFinite(b1) && isFinite(a1)) { const mid = (b1 + a1) / 2; yes = mid <= 1 ? mid * 100 : mid; }
             if (isFinite(yes) && yes > 0) this.quotes[mm.ticker] = { yes: Math.round(yes), ts: Date.now() };
+            const res2 = String(mm.result || "").toLowerCase();
+            const st2 = String(mm.status || "").toLowerCase();
+            this.log.bets.forEach(b => {
+              if (b.result || b.ticker !== mm.ticker) return;
+              if (res2 === "yes" || res2 === "no") {
+                b.result = (b.side.toLowerCase() === res2) ? "won" : "lost";
+                b.settledBy = "real"; b.review = false; dirty = true;
+                this.pushEvent(b.result === "won" ? "\u2713" : "\u2717", b.result === "won" ? "#4fce7f" : "#e5636a", "SETTLED (market result) " + (b.result === "won" ? "WON " : "LOST ") + this.fmt$(this.pnlOf(b)) + " \u00b7 " + b.title);
+              } else if (st2 && st2 !== "active" && st2 !== "open" && !b.review) {
+                b.review = true; dirty = true;
+                this.pushEvent("\u25cb", "#c792ea", "UNDER REVIEW (TBD) \u2014 market closed, result pending \u00b7 " + b.title);
+              }
+            });
           });
         }
       } catch (e) {}
@@ -2862,6 +2870,7 @@ class Component extends DCLogic {
         }
         if (b.result || !b.live || !b.ticker || posSet[b.ticker]) return;
         const g = groups[b.ticker + "|" + b.side];
+        if (b.review) return; // result pending at Kalshi - waiting is correct
         if (Date.now() > b.closeTs + this.settleGraceMs(b)) {
           // grace expired (30min normal / 20h weather-NWS), no position, no settlement -> not real
           b.result = "void"; b.settledBy = "real"; b.realPnl = 0; audited++; dirty = true;
@@ -2889,12 +2898,19 @@ class Component extends DCLogic {
     try { const j = JSON.parse(localStorage.getItem("kpd-pv-v1")); return Array.isArray(j) ? j : []; } catch (e) { return []; }
   }
 
+  // under-review (TBD) bets sometimes vanish from Kalshi's exposure before the cash
+  // is credited - count their cost basis so TOTAL VALUE / IN BETS stay truthful
+  reviewRiskExtra() {
+    return ((this.log && this.log.bets) || []).filter(b => b.live && !b.result && b.review && b.ticker && !(this.posSet && this.posSet[b.ticker])).reduce((s, b) => s + b.contracts * b.pc / 100, 0);
+  }
+
   // portfolio-value sampler: cash + money committed to open bets, recorded every ~30s
   recordSample() {
     const cash = this.liveStatus && this.liveStatus.balance != null ? this.liveStatus.balance / 100 : null;
     if (cash == null) return;
     let atRisk = this.atRisk;
     if (atRisk == null) atRisk = ((this.log && this.log.bets) || []).filter(b => b.live && !b.result).reduce((s, b) => s + b.contracts * b.pc / 100, 0);
+    else atRisk += this.reviewRiskExtra();
     this.pv = this.pv || this.loadPv();
     const last = this.pv[this.pv.length - 1];
     const now = Date.now();
@@ -3169,9 +3185,15 @@ class Component extends DCLogic {
       this.log.bets.forEach(b => {
         if (b.result || !b.ticker) return;
         const m = byT[b.ticker];
+        if (m && !(m.result === "yes" || m.result === "no")) {
+          // market closed/determined but result not published yet => UNDER REVIEW (TBD)
+          const st = String(m.status || "").toLowerCase();
+          const underReview = !!st && st !== "active" && st !== "open";
+          if (!!b.review !== underReview) { b.review = underReview; dirty = true; }
+        }
         if (m && (m.result === "yes" || m.result === "no")) {
           b.result = (m.result.toUpperCase() === b.side) ? "won" : "lost";
-          b.settledBy = "real";
+          b.settledBy = "real"; b.review = false;
           this.pushEvent(b.result === "won" ? "\u2713" : "\u2717", b.result === "won" ? "#4fce7f" : "#e5636a", "SETTLED (real result) " + (b.result === "won" ? "WON " : "LOST ") + this.fmt$(this.pnlOf(b)) + " \u00b7 " + b.title);
           dirty = true;
         }
@@ -3356,6 +3378,7 @@ class Component extends DCLogic {
         sideColor: b.side === "YES" ? "#4fce7f" : "#e8875a",
         strat: (b.live ? "\u25c9 LIVE \u00b7 " : "") + b.strat,
         result: done ? (b.result === "void" ? "NO FILL" : (won ? "WON" : "LOST") + (b.settledBy === "real" ? " \u2713" : "")) : (() => {
+          if (b.review) return "UNDER REVIEW \u00b7 TBD";
           if (now >= b.closeTs && this.isWeatherBet(b.ticker)) return "AWAITING NWS RPT";
           const state = b.live ? (b.fillState === "resting" ? "ORDER" : b.fillState === "partial" ? "PARTIAL" : "PLACED") : "OPEN";
           const q = b.ticker && this.quotes && this.quotes[b.ticker];
@@ -3364,13 +3387,14 @@ class Component extends DCLogic {
           return state + " \u00b7 " + wp + "%";
         })(),
         resultColor: done ? (b.result === "void" ? "#7d8697" : won ? "#4fce7f" : "#e5636a") : (() => {
+          if (b.review) return "#c792ea";
           const q = b.ticker && this.quotes && this.quotes[b.ticker];
           if (!q) return "#eab54e";
           const wp = b.side === "YES" ? q.yes : 100 - q.yes;
           return wp >= 60 ? "#4fce7f" : wp >= 40 ? "#eab54e" : "#e5636a";
         })(),
         resultBg: done ? (b.result === "void" ? "#1d222c" : won ? "#12281c" : "#2c1518") : "#2a2213",
-        pnl: done ? this.fmt$(pnl) : (now >= b.closeTs ? (this.isWeatherBet(b.ticker) ? "NWS report ~morning" : "settles " + relTo(b.closeTs + 600000)) : relTo(b.closeTs)),
+        pnl: done ? this.fmt$(pnl) : (b.review ? "result pending \u00b7 TBD" : (now >= b.closeTs ? (this.isWeatherBet(b.ticker) ? "NWS report ~morning" : "settles " + relTo(b.closeTs + 600000)) : relTo(b.closeTs))),
         pnlColor: done ? (pnl >= 0 ? "#4fce7f" : "#e5636a") : "#7d8697"
       };
     });
@@ -3440,7 +3464,7 @@ class Component extends DCLogic {
         this.pv = this.pv || this.loadPv();
         const pvWin = this.pv.filter(p => p.ts >= now - 24 * 3600000);
         const liveCash = this.liveStatus && this.liveStatus.balance != null ? this.liveStatus.balance / 100 : null;
-        const liveRisk = this.atRisk != null ? this.atRisk : ((this.log && this.log.bets) || []).filter(b => b.live && !b.result).reduce((s, b) => s + b.contracts * b.pc / 100, 0);
+        const liveRisk = this.atRisk != null ? (this.atRisk + this.reviewRiskExtra()) : ((this.log && this.log.bets) || []).filter(b => b.live && !b.result).reduce((s, b) => s + b.contracts * b.pc / 100, 0);
         const lastS = pvWin[pvWin.length - 1];
         const curC = liveCash != null ? liveCash : (lastS ? lastS.c : (start + totalPnl));
         const curR = liveCash != null ? liveRisk : (lastS ? lastS.r : 0);
@@ -3487,8 +3511,8 @@ class Component extends DCLogic {
             wpColor: wp >= 60 ? "#4fce7f" : wp >= 40 ? "#eab54e" : "#e5636a",
             win: "+$" + win.toFixed(2),
             lose: "\u2212$" + lose.toFixed(2),
-            cd: past ? (this.isWeatherBet(b.ticker) ? "NWS ~am" : "settling\u2026") : (s >= 3600 ? Math.floor(s / 3600) + "h " + Math.floor((s % 3600) / 60) + "m" : Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0")),
-            cdColor: past ? "#7d8697" : (s < 300 ? "#e5636a" : "#eab54e"),
+            cd: past ? (b.review ? "TBD" : this.isWeatherBet(b.ticker) ? "NWS ~am" : "settling\u2026") : (s >= 3600 ? Math.floor(s / 3600) + "h " + Math.floor((s % 3600) / 60) + "m" : Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0")),
+            cdColor: past ? (b.review ? "#c792ea" : "#7d8697") : (s < 300 ? "#e5636a" : "#eab54e"),
             state: b.live ? (b.fillState === "resting" ? "ORDER" : "\u25c9 LIVE") : "PAPER"
           };
         });
@@ -3608,7 +3632,7 @@ class Component extends DCLogic {
         this.setState({ rev: this.state.rev + 1 });
       },
       stopLive: () => this.disarm("manual STOP"),
-      buildTag: "BUILD v45",
+      buildTag: "BUILD v47",
       events: (this.events || []).map(e => {
         const d = new Date(e.ts);
         const p2 = n => String(n).padStart(2, "0");

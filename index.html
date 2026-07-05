@@ -1776,18 +1776,39 @@
     </div>
   </div>
 
-  <!-- Market strip (static, live-updating) -->
-  <sc-if value="{{ tapeHas }}" hint-placeholder-val="{{ false }}">
-    <div style="border-bottom: 1px solid #1a1f28; background: #0f1116; padding: 10px 32px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px;">
-      <sc-for list="{{ tapeItems }}" as="tp" hint-placeholder-count="8">
-        <div style="display: flex; align-items: center; gap: 8px; background: #12161d; border: 1px solid #1d232e; border-radius: 6px; padding: 7px 10px; min-width: 0;" style-hover="border-color: #2a3444;">
-          <span style="width: 6px; height: 6px; border-radius: 1px; background: {{ tp.color }}; flex: none;"></span>
-          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #8b93a3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0;" title="{{ tp.full }}">{{ tp.title }}</span>
-          <svg viewBox="0 0 40 14" style="width: 40px; height: 14px; flex: none;"><polyline points="{{ tp.spark }}" fill="none" stroke="{{ tp.sparkColor }}" stroke-width="1.2"></polyline></svg>
-          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; color: {{ tp.priceColor }}; flex: none;">{{ tp.price }}</span>
-          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: {{ tp.deltaColor }}; flex: none;">{{ tp.delta }}</span>
-        </div>
-      </sc-for>
+  <!-- ACTIVE BETS hero strip -->
+  <sc-if value="{{ abHas }}" hint-placeholder-val="{{ false }}">
+    <div style="border-bottom: 1px solid #1a1f28; background: #0f1116; padding: 14px 32px 16px 32px;">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 11px; letter-spacing: 0.12em; color: #aab2c0; font-weight: 700;"><span style="width: 3px; height: 12px; background: #4fce7f; border-radius: 2px; display: inline-block;"></span>ACTIVE BETS · LIVE ODDS &amp; COUNTDOWN</div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px;">
+        <sc-for list="{{ activeBets }}" as="ab" hint-placeholder-count="4">
+          <div style="background: linear-gradient(180deg, #151a22, #12161d); border: 1px solid #232936; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 9px;" style-hover="border-color: #2f3a4a;">
+            <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; color: #0d0f13; background: {{ ab.sideBg }}; border-radius: 3px; padding: 2px 7px; flex: none;">{{ ab.side }} {{ ab.pc }}</span>
+              <span style="font-size: 11.5px; font-weight: 700; color: #cfd4dd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0;" title="{{ ab.full }}">{{ ab.title }}</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 8.5px; color: #5c6474; flex: none;">{{ ab.state }}</span>
+            </div>
+            <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 10px;">
+              <div style="display: flex; flex-direction: column; gap: 1px;">
+                <div style="font-size: 8.5px; letter-spacing: 0.08em; color: #7d8697;">WIN CHANCE</div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 19px; font-weight: 600; line-height: 1; color: {{ ab.wpColor }};">{{ ab.wp }}</div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 1px;">
+                <div style="font-size: 8.5px; letter-spacing: 0.08em; color: #7d8697;">TO WIN</div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; color: #4fce7f;">{{ ab.win }}</div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 1px;">
+                <div style="font-size: 8.5px; letter-spacing: 0.08em; color: #7d8697;">RISK</div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; font-weight: 600; color: #e5636a;">{{ ab.lose }}</div>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 1px; align-items: flex-end;">
+                <div style="font-size: 8.5px; letter-spacing: 0.08em; color: #7d8697;">ENDS IN</div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600; color: {{ ab.cdColor }};">{{ ab.cd }}</div>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
     </div>
   </sc-if>
 
@@ -2688,6 +2709,11 @@ class Component extends DCLogic {
   // Kalshi 2026 API: counts are fixed-point strings (position_fp "10.00"), money is
   // *_dollars strings; legacy integer-cent fields are being removed. Read fp/dollars
   // FIRST and fall back to legacy names so both API generations parse correctly.
+  // weather markets settle on the next-morning NWS Climate Report (~6-9am local),
+  // NOT at market close - give them ~20h of settlement patience before any void
+  isWeatherBet(t) { return /KXHIGH|KXLOW/i.test(t || ""); }
+  settleGraceMs(b) { return this.isWeatherBet(b.ticker) ? 20 * 3600000 : 30 * 60000; }
+
   fpNum(v) { const n = parseFloat(v); return isFinite(n) ? n : null; }
   fpCount(o, fpKey, legacyKey) {
     const a = this.fpNum(o[fpKey]); if (a != null) return a;
@@ -2778,7 +2804,7 @@ class Component extends DCLogic {
           dirty = true;
           return;
         }
-        if (b.live && !b.imported && !b.result && b.ticker && Date.now() > b.closeTs + 15 * 60000) {
+        if (b.live && !b.imported && !b.result && b.ticker && !this.isWeatherBet(b.ticker) && Date.now() > b.closeTs + 15 * 60000) {
           const g = groups[b.ticker + "|" + b.side];
           if (!g || !g.count) {
             b.result = "void"; b.settledBy = "real"; b.realPnl = 0;
@@ -2836,8 +2862,8 @@ class Component extends DCLogic {
         }
         if (b.result || !b.live || !b.ticker || posSet[b.ticker]) return;
         const g = groups[b.ticker + "|" + b.side];
-        if (Date.now() > b.closeTs + 30 * 60000) {
-          // market closed 30+ min ago, no position, no settlement record -> not real
+        if (Date.now() > b.closeTs + this.settleGraceMs(b)) {
+          // grace expired (30min normal / 20h weather-NWS), no position, no settlement -> not real
           b.result = "void"; b.settledBy = "real"; b.realPnl = 0; audited++; dirty = true;
         } else if ((!g || !g.count) && Date.now() < b.closeTs && Date.now() > (b.placedTs || 0) + 10 * 60000) {
           // mid-market, never filled, no position -> not real
@@ -3330,6 +3356,7 @@ class Component extends DCLogic {
         sideColor: b.side === "YES" ? "#4fce7f" : "#e8875a",
         strat: (b.live ? "\u25c9 LIVE \u00b7 " : "") + b.strat,
         result: done ? (b.result === "void" ? "NO FILL" : (won ? "WON" : "LOST") + (b.settledBy === "real" ? " \u2713" : "")) : (() => {
+          if (now >= b.closeTs && this.isWeatherBet(b.ticker)) return "AWAITING NWS RPT";
           const state = b.live ? (b.fillState === "resting" ? "ORDER" : b.fillState === "partial" ? "PARTIAL" : "PLACED") : "OPEN";
           const q = b.ticker && this.quotes && this.quotes[b.ticker];
           if (!q) return state;
@@ -3343,7 +3370,7 @@ class Component extends DCLogic {
           return wp >= 60 ? "#4fce7f" : wp >= 40 ? "#eab54e" : "#e5636a";
         })(),
         resultBg: done ? (b.result === "void" ? "#1d222c" : won ? "#12281c" : "#2c1518") : "#2a2213",
-        pnl: done ? this.fmt$(pnl) : (now >= b.closeTs ? "settles " + relTo(b.closeTs + 600000) : relTo(b.closeTs)),
+        pnl: done ? this.fmt$(pnl) : (now >= b.closeTs ? (this.isWeatherBet(b.ticker) ? "NWS report ~morning" : "settles " + relTo(b.closeTs + 600000)) : relTo(b.closeTs)),
         pnlColor: done ? (pnl >= 0 ? "#4fce7f" : "#e5636a") : "#7d8697"
       };
     });
@@ -3444,33 +3471,28 @@ class Component extends DCLogic {
       bankroll: (this.liveStatus && this.liveStatus.balance != null) ? "$" + (this.liveStatus.balance / 100).toFixed(2) : "$" + (start + totalPnl).toFixed(2),
       bankrollLabel: (this.liveStatus && this.liveStatus.balance != null) ? "KALSHI BALANCE \u00b7 LIVE" : "BANKROLL",
       ...(() => {
-        const pool = (this.customPool || this.livePool || []).slice(0, 12);
-        const items = pool.map(m => {
-          const hist = (this.pHist && m.ticker && this.pHist[m.ticker]) || [];
-          const recent = hist.slice(-12);
-          let spark = "", sparkColor = "#3a465c";
-          if (recent.length >= 2) {
-            const lo = Math.min.apply(null, recent.map(h => h.yes));
-            const hi = Math.max.apply(null, recent.map(h => h.yes));
-            const span = Math.max(hi - lo, 2);
-            spark = recent.map((h, i) => (i / (recent.length - 1) * 40).toFixed(1) + "," + (12 - ((h.yes - lo) / span) * 10).toFixed(1)).join(" ");
-            sparkColor = recent[recent.length - 1].yes >= recent[0].yes ? "#4fce7f" : "#e5636a";
-          }
-          const past = hist.filter(h => h.ts <= now - 8 * 60000);
-          const old = past.length ? past[past.length - 1] : hist[0];
-          const d = old ? m.yes - old.yes : 0;
+        const act = bets.filter(b => !b.result).sort((a, b2) => a.closeTs - b2.closeTs).slice(0, 12);
+        const items = act.map(b => {
+          const q = b.ticker && this.quotes && this.quotes[b.ticker];
+          const wp = Math.round(q ? (b.side === "YES" ? q.yes : 100 - q.yes) : b.pc);
+          const win = b.contracts * (100 - b.pc) / 100 - (b.fee || 0);
+          const lose = b.contracts * b.pc / 100 + (b.fee || 0);
+          const s = Math.max(0, Math.floor((b.closeTs - now) / 1000));
+          const past = now >= b.closeTs;
           return {
-            title: (m.t || "").slice(0, 40),
-            full: m.t || "",
-            price: m.yes + "\u00a2",
-            priceColor: m.yes >= 50 ? "#4fce7f" : "#e8875a",
-            color: this.catColor(m.c),
-            spark, sparkColor,
-            delta: d ? ((d > 0 ? "+" : "") + d + "\u00a2") : "\u00b7",
-            deltaColor: d > 0 ? "#4fce7f" : d < 0 ? "#e5636a" : "#4a5261"
+            title: b.title, full: b.full || b.title,
+            side: b.side, sideBg: b.side === "YES" ? "#4fce7f" : "#e8875a",
+            pc: b.pc + "\u00a2",
+            wp: wp + "%",
+            wpColor: wp >= 60 ? "#4fce7f" : wp >= 40 ? "#eab54e" : "#e5636a",
+            win: "+$" + win.toFixed(2),
+            lose: "\u2212$" + lose.toFixed(2),
+            cd: past ? (this.isWeatherBet(b.ticker) ? "NWS ~am" : "settling\u2026") : (s >= 3600 ? Math.floor(s / 3600) + "h " + Math.floor((s % 3600) / 60) + "m" : Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0")),
+            cdColor: past ? "#7d8697" : (s < 300 ? "#e5636a" : "#eab54e"),
+            state: b.live ? (b.fillState === "resting" ? "ORDER" : "\u25c9 LIVE") : "PAPER"
           };
         });
-        return { tapeHas: items.length >= 3, tapeItems: items };
+        return { abHas: items.length > 0, activeBets: items };
       })(),
       streakDots: settled.slice(-20).map(b => ({ c: b.result === "won" ? "#4fce7f" : "#e5636a" })),
       ...(() => {
@@ -3586,7 +3608,7 @@ class Component extends DCLogic {
         this.setState({ rev: this.state.rev + 1 });
       },
       stopLive: () => this.disarm("manual STOP"),
-      buildTag: "BUILD v43",
+      buildTag: "BUILD v45",
       events: (this.events || []).map(e => {
         const d = new Date(e.ts);
         const p2 = n => String(n).padStart(2, "0");

@@ -1,9 +1,9 @@
-# Kalshi Live Desk — FINAL DEPLOYMENT (BUILD v37)
+# Kalshi Live Desk — FINAL DEPLOYMENT (BUILD v45)
 
 3 files + this README. The repo root must look exactly like this:
 
 ```
-index.html      <- the dashboard (header must say BUILD v37 after deploy)
+index.html      <- the dashboard (header must say BUILD v45 after deploy)
 vercel.json     <- proxies /api/kalshi/* to Kalshi's market-data API
 api/
   trade.js      <- signed order placement + portfolio sync (needs env vars)
@@ -18,7 +18,7 @@ api/
    and `trade.js` inside a folder named `api`.)
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v37**. If it shows an older number,
+4. Check the header — it must say **BUILD v45**. If it shows an older number,
    the repo file is still old: open the repo's `index.html` on GitHub and
    search for "BUILD v" to see what's actually committed.
 

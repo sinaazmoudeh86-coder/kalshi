@@ -1744,7 +1744,7 @@
     </div>
     <div style="display: flex; align-items: center; gap: 28px; flex-wrap: wrap; row-gap: 10px; justify-content: flex-end;">
       <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
-        <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697;">BANKROLL</div>
+        <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697;">{{ bankrollLabel }}</div>
         <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600;">{{ bankroll }}</div>
       </div>
       <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
@@ -2090,7 +2090,7 @@ class Component extends DCLogic {
 
   tick() {
     const now = Date.now();
-    if (this.liveCfg && this.liveCfg.armed && now - (this.lastBal || 0) > 60000) { this.lastBal = now; this.fetchStatus(); }
+    if (this.liveCfg && this.liveCfg.secret && now - (this.lastBal || 0) > 60000) { this.lastBal = now; this.fetchStatus(); }
     let dirty = this.settleDue(now);
     dirty = this.scan(now) || dirty;
     if (dirty) this.save();
@@ -2769,7 +2769,8 @@ class Component extends DCLogic {
     return {
       todayLabel: new Date(now).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }).toUpperCase(),
       snapshotLabel: this.SNAPSHOT_LABEL,
-      bankroll: "$" + (start + totalPnl).toFixed(2),
+      bankroll: (this.liveStatus && this.liveStatus.balance != null) ? "$" + (this.liveStatus.balance / 100).toFixed(2) : "$" + (start + totalPnl).toFixed(2),
+      bankrollLabel: (this.liveStatus && this.liveStatus.balance != null) ? "KALSHI BALANCE \u00b7 LIVE" : "BANKROLL",
       totalPnl: this.fmt$(totalPnl),
       pnlColor: totalPnl >= 0 ? "#4fce7f" : "#e5636a",
       pnlPct: (totalPnl >= 0 ? "+" : "") + ((totalPnl / start) * 100).toFixed(1) + "%",
@@ -2835,7 +2836,7 @@ class Component extends DCLogic {
         this.setState({ rev: this.state.rev + 1 });
       },
       stopLive: () => this.disarm("manual STOP"),
-      buildTag: "BUILD v17",
+      buildTag: "BUILD v18",
       events: (this.events || []).map(e => {
         const d = new Date(e.ts);
         const p2 = n => String(n).padStart(2, "0");

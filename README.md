@@ -1,12 +1,13 @@
-# Kalshi Live Desk — DEPLOYMENT (BUILD v60 · browser model)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v75 · Kalshi-only, server feed)
 
 3 files + this README. The repo root must look exactly like this:
 
 ```
-index.html      <- the dashboard (header must say BUILD v60 after deploy)
-vercel.json     <- proxies /api/kalshi/* to Kalshi's market-data API
+index.html      <- the dashboard (header must say BUILD v75 after deploy)
+vercel.json     <- proxies /api/kalshi/* to Kalshi's market-data API + feed budget
 api/
   trade.js      <- signed order placement + portfolio sync (needs env vars)
+  feed.js       <- server-side market sweep: browser makes 1 request, not ~80 (no env vars)
 ```
 
 ## Deploy steps
@@ -16,7 +17,7 @@ api/
    inside a folder named `api`.
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v60**.
+4. Check the header — it must say **BUILD v75**.
 
 ## Environment variables (Vercel → Settings → Environment Variables)
 

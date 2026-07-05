@@ -1716,6 +1716,23 @@
 
 <div style="min-height: 100vh; background: #0d0f13; color: #e6e9ef; font-family: Helvetica, Arial, sans-serif; padding: 0 0 40px 0;">
 
+  <!-- Password gate -->
+  <sc-if value="{{ locked }}" hint-placeholder-val="{{ false }}">
+    <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;">
+      <div style="background: #14181f; border: 1px solid #232936; border-radius: 8px; padding: 32px; width: 320px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);">
+        <div style="font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 15px; letter-spacing: 0.08em; color: #e6e9ef;">KALSHI PAPER DESK</div>
+        <div style="font-size: 11px; color: #7d8697;">Enter password to continue</div>
+        <input type="password" value="{{ pw }}" onChange="{{ onPwChange }}" onKeyDown="{{ pwKey }}" autoFocus="{{ true }}" placeholder="Password" style="background: #0d0f13; border: 1px solid #2a303c; border-radius: 4px; color: #e6e9ef; font-family: 'IBM Plex Mono', monospace; font-size: 14px; padding: 10px 12px; outline: none;" style-focus="border-color: #3a465c;"></input>
+        <button onClick="{{ tryUnlock }}" style="background: #4fce7f; border: 1px solid #4fce7f; border-radius: 4px; color: #0d0f13; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; padding: 10px; cursor: pointer;" style-hover="background: #5fdd8e;">UNLOCK</button>
+        <sc-if value="{{ pwErr }}" hint-placeholder-val="{{ false }}">
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #e5636a;">Wrong password — try again.</div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ unlocked }}" hint-placeholder-val="{{ true }}">
+
   <!-- ===== Header bar ===== -->
   <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 28px; border-bottom: 1px solid #20242e; background: #101318;">
     <div style="display: flex; align-items: baseline; gap: 14px;">
@@ -1727,12 +1744,13 @@
     </div>
     <div style="display: flex; align-items: center; gap: 28px; flex-wrap: wrap; row-gap: 10px; justify-content: flex-end;">
       <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
-        <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697;">BANKROLL</div>
+        <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697;">{{ bankrollLabel }}</div>
         <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600;">{{ bankroll }}</div>
       </div>
       <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
         <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697;">TOTAL P&amp;L</div>
         <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: {{ pnlColor }};">{{ totalPnl }}</div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #7d8697;">{{ pnlSplit }}</div>
       </div>
       <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
         <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697;">HIT RATE</div>
@@ -1757,6 +1775,9 @@
         </div>
       </div>
       <button onClick="{{ resetLog }}" style="background: none; border: 1px solid #2a303c; border-radius: 3px; color: #7d8697; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.08em; padding: 6px 12px; cursor: pointer;" style-hover="border-color: #e5636a; color: #e5636a;">RESET LOG</button>
+      <sc-if value="{{ liveArmed }}" hint-placeholder-val="{{ false }}">
+        <button onClick="{{ stopLive }}" style="background: #e5636a; border: 1px solid #e5636a; border-radius: 3px; color: #0d0f13; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; padding: 8px 14px; cursor: pointer; animation: kpdPulse 2s ease-in-out infinite;">■ STOP LIVE</button>
+      </sc-if>
     </div>
   </div>
 
@@ -1852,7 +1873,13 @@
       <div>
         <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 10px 0;">
           <div style="font-size: 12px; letter-spacing: 0.12em; color: #aab2c0; font-weight: 700;">LIVE SIGNALS · WATCHLIST</div>
-          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #7d8697;">auto-entered the moment all 6 gates pass</div>
+          <div style="display: flex; align-items: center; gap: 5px;">
+            <div style="font-size: 9px; letter-spacing: 0.1em; color: #7d8697;">SETTLE HORIZON</div>
+            <sc-for list="{{ horizonOpts }}" as="hz" hint-placeholder-count="4">
+              <button onClick="{{ hz.pick }}" style="background: {{ hz.bg }}; border: 1px solid {{ hz.border }}; color: {{ hz.color }}; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 3px; cursor: pointer;">{{ hz.label }}</button>
+            </sc-for>
+          </div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #7d8697;">auto-entered the moment all 7 gates pass</div>
         </div>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px;">
           <sc-for list="{{ signals }}" as="s" hint-placeholder-count="3">
@@ -1951,7 +1978,13 @@
             <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: {{ b.color }}; border: 1px solid #232936; border-radius: 3px; padding: 2px 7px;">{{ b.name }} ×{{ b.mult }}</div>
           </sc-for>
         </div>
-        <div style="font-size: 10px; color: #5c6474; line-height: 1.5; margin-top: 12px;">{{ candCount }} positions re-scored every 5 seconds. A $25 bet fires the moment all 6 gates pass: settles in 5–60 min, 55–92¢ favorite band, 24h volume ≥ $100, net edge ≥ +2.5¢ after Kalshi fees (~7% × p × (1−p) per contract), composite score ≥ 60 (win odds × income × category form), and not already holding the market. No position caps — every qualified edge is taken.</div>
+        <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697; font-weight: 700; margin: 14px 0 8px 0;">LEARNING MODULE · ADAPTS FROM EVERY RESULT</div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <sc-for list="{{ learnLines }}" as="ll" hint-placeholder-count="3">
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: {{ ll.color }}; line-height: 1.5;">{{ ll.text }}</div>
+          </sc-for>
+        </div>
+        <div style="font-size: 10px; color: #5c6474; line-height: 1.5; margin-top: 12px;">{{ candCount }} positions re-scored every 5 seconds. A $25 bet fires the moment all 7 gates pass: settles in 5–60 min, 55–92¢ favorite band, 24h volume ≥ $100, net edge ≥ +2.5¢ after Kalshi fees (~7% × p × (1−p) per contract), composite score ≥ 60 (win odds × income × category form), and not already holding the market. No position caps — every qualified edge is taken.</div>
       </div>
 
       <!-- Category breakdown -->
@@ -1994,6 +2027,33 @@
         </div>
       </div>
 
+      <!-- Live trading -->
+      <div style="background: #14181f; border: 1px solid #232936; border-radius: 6px; padding: 16px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+          <div style="font-size: 11px; letter-spacing: 0.12em; color: #aab2c0; font-weight: 700;">LIVE TRADING</div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; color: {{ liveChipColor }}; background: {{ liveChipBg }}; border-radius: 3px; padding: 2px 8px;">{{ liveChip }}</div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+          <div style="background: #10141a; border: 1px solid #1d232e; border-radius: 4px; padding: 10px;">
+            <div style="font-size: 9px; letter-spacing: 0.08em; color: #7d8697; margin-bottom: 4px;">KALSHI BALANCE</div>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600; color: #e6e9ef;">{{ liveBalance }}</div>
+          </div>
+          <div style="background: #10141a; border: 1px solid #1d232e; border-radius: 4px; padding: 10px;">
+            <div style="font-size: 9px; letter-spacing: 0.08em; color: #7d8697; margin-bottom: 4px;">TODAY (LIVE BETS)</div>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600; color: {{ livePnlTodayColor }};">{{ livePnlTodayLabel }}</div>
+          </div>
+        </div>
+        <sc-if value="{{ liveDisarmed }}" hint-placeholder-val="{{ true }}">
+          <button onClick="{{ armLive }}" style="width: 100%; background: none; border: 1px solid #3a465c; border-radius: 4px; color: #e6e9ef; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; padding: 10px; cursor: pointer;" style-hover="background: #1d2430;">ARM LIVE TRADING</button>
+          <div style="font-size: 10px; color: #5c6474; line-height: 1.5; margin-top: 8px;">Requires the api/trade.js function deployed with KALSHI_ACCESS_KEY, KALSHI_PRIVATE_KEY and TRADE_SECRET env vars set on Vercel. Orders are $25 limit-at-ask, signed server-side; your key never touches the browser.</div>
+        </sc-if>
+        <sc-if value="{{ liveArmed }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ stopLive }}" style="width: 100%; background: #e5636a; border: 1px solid #e5636a; border-radius: 4px; color: #0d0f13; font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; padding: 10px; cursor: pointer;">■ STOP — DISARM NOW</button>
+          <div style="font-size: 10px; color: #8b93a3; line-height: 1.5; margin-top: 8px;">{{ liveCapLabel }}</div>
+          <div style="font-size: 10px; color: #e5636a; line-height: 1.5; margin-top: 2px;">{{ liveStatusErr }}</div>
+        </sc-if>
+      </div>
+
       <!-- Market pool -->
       <div style="background: #14181f; border: 1px solid #232936; border-radius: 6px; padding: 16px;">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
@@ -2021,17 +2081,19 @@
       <div style="font-size: 10px; color: #5c6474; line-height: 1.5; padding: 0 4px;">{{ dataNote }} Settlement uses real Kalshi results when the feed provides them (✓ in the log), with odds-based simulation as fallback. Paper trading only — not financial advice.</div>
     </div>
   </div>
+</sc-if>
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;startingBankroll&quot;: {&quot;editor&quot;: &quot;int&quot;, &quot;default&quot;: 500, &quot;min&quot;: 100, &quot;max&quot;: 10000, &quot;unit&quot;: &quot;$&quot;, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Desk settings&quot;}}">
 class Component extends DCLogic {
-  state = { now: Date.now(), rev: 0, filter: "all", editorOpen: false, editorText: "", copiedId: null };
+  state = { now: Date.now(), rev: 0, filter: "all", editorOpen: false, editorText: "", copiedId: null, pw: "", pwErr: false, auth: (() => { try { return localStorage.getItem("kpd-auth") === "ok"; } catch (e) { return false; } })() };
   KEY = "kpd-live-log-v1";
   POOL_KEY = "kpd-pool-v1";
   SNAPSHOT_LABEL = "JUL 4, 2026";
 
   componentDidMount() {
     this.loadLog();
+    try { this.liveCfg = JSON.parse(localStorage.getItem("kpd-live-v1") || "null"); } catch (e) { this.liveCfg = null; }
     this.dataMode = "connecting";
     this.fetchLive();
     this.tick();
@@ -2041,6 +2103,8 @@ class Component extends DCLogic {
 
   tick() {
     const now = Date.now();
+    if (this.liveCfg && this.liveCfg.secret && now - (this.lastBal || 0) > 60000) { this.lastBal = now; this.fetchStatus(); }
+    if (this.liveCfg && this.liveCfg.secret && now - (this.lastPf || 0) > 120000) { this.lastPf = now; this.syncPortfolio(); }
     let dirty = this.settleDue(now);
     dirty = this.scan(now) || dirty;
     if (dirty) this.save();
@@ -2100,7 +2164,7 @@ class Component extends DCLogic {
           yes, closeTs, vol, _bid: bid, _ask: ask
         };
       })
-      .filter(m => m.yes >= 5 && m.yes <= 95 && m.closeTs - nowT > 4 * 60000 && m.closeTs - nowT < 185 * 60000);
+      .filter(m => m.yes >= 5 && m.yes <= 95 && m.closeTs - nowT > 4 * 60000 && m.closeTs - nowT < (this.horizonMins() + 125) * 60000);
     // primary: real traded volume; fallback: live two-sided quotes
     let pool = mapped.filter(m => m.vol > 50);
     if (pool.length < 3) pool = mapped.filter(m => m._bid > 0 && m._ask < 100);
@@ -2124,14 +2188,14 @@ class Component extends DCLogic {
           vol: parseFloat(m.volume24hr) || 0
         };
       })
-      .filter(m => m.t && m.yes >= 5 && m.yes <= 95 && m.closeTs - nowT > 4 * 60000 && m.closeTs - nowT < 185 * 60000)
+      .filter(m => m.t && m.yes >= 5 && m.yes <= 95 && m.closeTs - nowT > 4 * 60000 && m.closeTs - nowT < (this.horizonMins() + 125) * 60000)
       .slice(0, 40);
   }
 
   async fetchLive() {
     const KBASE = "https://api.elections.kalshi.com/trade-api/v2";
     const nowS = Math.floor(Date.now() / 1000);
-    const W = "&min_close_ts=" + (nowS + 240) + "&max_close_ts=" + (nowS + 10800);
+    const W = "&min_close_ts=" + (nowS + 240) + "&max_close_ts=" + (nowS + Math.max(10800, (this.horizonMins() + 125) * 60));
     const Q1 = "/markets?limit=1000&status=open" + W;
     const Q2 = "/markets?limit=1000&status=open";
     const diag = [];
@@ -2188,16 +2252,16 @@ class Component extends DCLogic {
           if (discovered.length) { this.seriesCache = discovered; this.seriesCacheTs = Date.now(); }
           diag.push("KALSHI CATALOG: discovered " + discovered.length + " series");
         }
-        const series = Array.from(new Set(staticList.concat(discovered || []))).slice(0, 48);
+        const series = Array.from(new Set(staticList.concat(discovered || []))).slice(0, 36);
         const results = [];
-        for (let i = 0; i < series.length; i += 8) {
-          const chunk = series.slice(i, i + 8);
+        for (let i = 0; i < series.length; i += 5) {
+          const chunk = series.slice(i, i + 5);
           const rs = await Promise.all(chunk.map(s => {
             const u0 = base + "/markets?limit=100&status=open&series_ticker=" + s;
             return this.fetchJson(wrap ? wrap(u0) : u0, 12000).catch(() => null);
           }));
           results.push.apply(results, rs);
-          if (i + 8 < series.length) await new Promise(r => setTimeout(r, 350));
+          if (i + 5 < series.length) await new Promise(r => setTimeout(r, 800));
         }
         let all = [], hits = [];
         results.forEach((j, i) => {
@@ -2288,8 +2352,91 @@ class Component extends DCLogic {
     return [];
   }
 
+  horizonMins() { return this.horizon || 60; }
+
   catColor(c) {
     return { ECON: "#5aa7e8", CRYPTO: "#c792ea", COMMOD: "#eab54e", SPORTS: "#4fce7f", "M&A": "#e864a0", AI: "#57c8c0", POLITICS: "#e8875a", WEATHER: "#57c8c0", MARKET: "#8b93a3" }[c] || "#8b93a3";
+  }
+
+  // ===== LEARNING MODULE =====
+  // Recomputed from the settled log every 30s. Three mechanisms, all data-driven:
+  //   A. CALIBRATION — if bets win less often than their price implies, every new
+  //      entry must show that shortfall as EXTRA net edge (up to +4c).
+  //   B. CATEGORY ADJUST — per-category Bayesian-shrunk win rate vs expected;
+  //      underperforming categories demand extra edge (up to +5c more).
+  //   C. COOLDOWNS — 3 straight losses in a category blocks it for 2h;
+  //      5 straight losses overall halts ALL entries for 1h (circuit breaker).
+  // Real-settled and manual results count double vs simulated ones.
+  learnModel(now) {
+    if (this._lm && now - this._lmTs < 30000) return this._lm;
+    const bets = ((this.log && this.log.bets) || []).filter(b => b.result === "won" || b.result === "lost");
+    const wOf = b => (b.settledBy === "real" || b.settledBy === "manual") ? 2 : 1;
+    const expOf = b => Math.min(0.95, b.pc / 100 + 0.02);
+    let n = 0, w = 0, exp = 0, rn = 0, rw = 0;
+    bets.forEach(b => {
+      const wt = wOf(b);
+      n += wt; w += (b.result === "won" ? wt : 0); exp += wt * expOf(b);
+      rn++; rw += b.result === "won" ? 1 : 0;
+    });
+    const shortfall = n > 0 ? Math.max(0, (exp - w) / n) : 0;
+    const calib = Math.round(Math.min(4, shortfall * 100 * (n / (n + 20))) * 10) / 10;
+    // per-category aggregates
+    const cat = {};
+    bets.forEach(b => {
+      const wt = wOf(b);
+      const c = cat[b.cat] = cat[b.cat] || { n: 0, w: 0, exp: 0, rn: 0, rw: 0 };
+      c.n += wt; c.w += (b.result === "won" ? wt : 0); c.exp += wt * expOf(b);
+      c.rn++; c.rw += b.result === "won" ? 1 : 0;
+    });
+    const catAdj = {};
+    Object.keys(cat).forEach(k => {
+      const c = cat[k];
+      const expRate = c.exp / c.n;
+      const adjRate = (c.w + 2 * expRate) / (c.n + 2); // Bayesian shrink toward expected
+      const short = Math.max(0, expRate - adjRate);
+      catAdj[k] = {
+        extra: Math.round(Math.min(5, short * 100 * (c.n / (c.n + 8))) * 10) / 10,
+        mult: Math.max(0.6, Math.min(1.25, adjRate / Math.max(expRate, 0.05))),
+        rec: c.rw + "\u2013" + (c.rn - c.rw)
+      };
+    });
+    // loss-streak cooldowns
+    const byCat = {};
+    bets.slice().sort((a, b) => a.closeTs - b.closeTs).forEach(b => { (byCat[b.cat] = byCat[b.cat] || []).push(b); });
+    const blocked = {};
+    Object.keys(byCat).forEach(k => {
+      const arr = byCat[k];
+      let streak = 0, lastTs = 0;
+      for (let i = arr.length - 1; i >= 0; i--) {
+        if (arr[i].result === "lost") { streak++; lastTs = Math.max(lastTs, arr[i].closeTs); } else break;
+      }
+      if (streak >= 3 && now < lastTs + 2 * 3600000) blocked[k] = lastTs + 2 * 3600000;
+    });
+    const allS = bets.slice().sort((a, b) => a.closeTs - b.closeTs);
+    let gStreak = 0, gLast = 0;
+    for (let i = allS.length - 1; i >= 0; i--) {
+      if (allS[i].result === "lost") { gStreak++; gLast = Math.max(gLast, allS[i].closeTs); } else break;
+    }
+    const haltUntil = (gStreak >= 5 && now < gLast + 3600000) ? gLast + 3600000 : 0;
+    // human-readable summary
+    const remM = ts => Math.max(1, Math.ceil((ts - now) / 60000)) + "m";
+    const lines = [];
+    if (!rn) {
+      lines.push({ text: "Collecting settled outcomes \u2014 adjustments begin after the first results land.", color: "#7d8697" });
+    } else {
+      const expDisp = (exp / (n / rn)).toFixed(1);
+      lines.push({ text: "CALIBRATION: " + rw + "\u2013" + (rn - rw) + " actual vs ~" + expDisp + " expected wins" + (calib > 0 ? " \u2192 demanding +" + calib + "\u00a2 extra edge on every entry" : " \u2192 on target, no penalty"), color: calib > 0 ? "#eab54e" : "#4fce7f" });
+      Object.keys(catAdj).sort((a, b) => catAdj[a].mult - catAdj[b].mult).slice(0, 4).forEach(k => {
+        const a = catAdj[k];
+        lines.push({ text: k + ": " + a.rec + " \u00b7 form \u00d7" + a.mult.toFixed(2) + (a.extra > 0 ? " \u00b7 +" + a.extra + "\u00a2 extra edge required" : ""), color: a.mult >= 1 ? "#4fce7f" : "#e8875a" });
+      });
+      Object.keys(blocked).forEach(k => lines.push({ text: "COOLDOWN: " + k + " blocked " + remM(blocked[k]) + " after 3 straight losses", color: "#e5636a" }));
+      if (haltUntil) lines.push({ text: "CIRCUIT BREAKER: all entries paused " + remM(haltUntil) + " after 5 straight losses", color: "#e5636a" });
+    }
+    this._lm = { calib, catAdj, blocked, haltUntil, lines,
+      reqEdge: c => Math.round((2.5 + calib + ((catAdj[c] && catAdj[c].extra) || 0)) * 10) / 10 };
+    this._lmTs = now;
+    return this._lm;
   }
 
   categoryPerf() {
@@ -2320,6 +2467,7 @@ class Component extends DCLogic {
     const bucket = Math.floor(now / 600000); // 10-min price/signal buckets
     const nextTop = (curHour + 1) * 3600000;
     const perf = this.categoryPerf();
+    const L = this.learnModel(now);
     const openBets = ((this.log && this.log.bets) || []).filter(b => !b.result);
     const cands = [];
     M.forEach((m, idx) => {
@@ -2344,18 +2492,155 @@ class Component extends DCLogic {
         const vol = m.vol || 0;
         const volLabel = vol >= 1000000 ? (vol / 1000000).toFixed(1) + "M" : vol >= 1000 ? Math.round(vol / 1000) + "k" : String(vol);
         const gates = [
-          { k: "T-MINUS", label: "settles in 5\u201360 min", pass: minsLeft >= 5 && minsLeft <= 60, val: Math.max(0, Math.round(minsLeft)) + "m" },
+          { k: "T-MINUS", label: "settles within " + (this.horizonMins() >= 60 ? (this.horizonMins() / 60) + "h" : this.horizonMins() + "m"), pass: minsLeft >= 5 && minsLeft <= this.horizonMins(), val: minsLeft >= 60 ? (minsLeft / 60).toFixed(1) + "h" : Math.max(0, Math.round(minsLeft)) + "m" },
           { k: "WIN ODDS", label: "price in 55\u201392\u00a2 favorite band", pass: pc >= 55 && pc <= 92, val: pc + "\u00a2" },
           { k: "LIQUIDITY", label: "24h volume \u2265 $100", pass: vol >= 100, val: "$" + volLabel },
-          { k: "NET EDGE", label: "signal \u2265 +2.5\u00a2 after Kalshi fees", pass: netEdge >= 2.5, val: (netEdge >= 0 ? "+" : "") + netEdge + "\u00a2" },
+          { k: "NET EDGE", label: "signal \u2265 +" + L.reqEdge(m.c) + "\u00a2 net of fees (learned)", pass: netEdge >= L.reqEdge(m.c), val: (netEdge >= 0 ? "+" : "") + netEdge + "\u00a2" },
           { k: "SCORE", label: "composite \u00d7 category form \u2265 60", pass: score >= 60, val: String(score) },
-          { k: "DUPLICATE", label: "not already holding this market", pass: !dupe, val: dupe ? "held" : "clear" }
+          { k: "DUPLICATE", label: "not already holding this market", pass: !dupe, val: dupe ? "held" : "clear" },
+          { k: "LEARNING", label: "no loss-streak cooldown active", pass: !L.blocked[m.c] && !L.haltUntil, val: L.haltUntil ? "halted " + Math.max(1, Math.ceil((L.haltUntil - now) / 60000)) + "m" : (L.blocked[m.c] ? "cooldown " + Math.max(1, Math.ceil((L.blocked[m.c] - now) / 60000)) + "m" : "clear") }
         ];
         cands.push({ m, idx, side, pc, contracts, winProb, edge, netEdge, fee, score, closeTs, minsLeft, gates, pass: gates.every(g => g.pass), held: dupe });
       });
     });
     cands.sort((a, b) => (b.held ? 1 : 0) - (a.held ? 1 : 0) || b.score - a.score);
     return cands;
+  }
+
+  async syncPortfolio() {
+    if (!this.liveCfg || !this.liveCfg.secret || !this.log) return;
+    try {
+      const r = await fetch("/api/trade?action=portfolio", { headers: { "x-trade-secret": this.liveCfg.secret } });
+      if (!r.ok) return;
+      const j = await r.json();
+      let dirty = false;
+      const since = this.liveCfg.since || (Date.now() - 86400000);
+      // ---- group buy fills by ticker+side ----
+      const groups = {};
+      (j.fills || []).forEach(f => {
+        if ((f.action || "buy") !== "buy") return;
+        const raw = (f.side || "yes").toLowerCase();
+        const sideUp = raw === "bid" ? "YES" : raw === "ask" ? "NO" : raw.toUpperCase();
+        const cnt = parseFloat(f.count) || 0;
+        let yp = parseFloat(f.yes_price);
+        if (!isFinite(yp)) yp = parseFloat(f.yes_price_dollars) * 100;
+        if (!isFinite(yp)) { const p = parseFloat(f.price); yp = isFinite(p) ? (p <= 1 ? p * 100 : p) : NaN; }
+        if (!isFinite(yp)) return;
+        const pc = sideUp === "NO" ? 100 - yp : yp; // cost of the side actually bought
+        const key = f.ticker + "|" + sideUp;
+        const g = groups[key] = groups[key] || { ticker: f.ticker, side: sideUp, count: 0, costC: 0, ts: 0 };
+        g.count += cnt; g.costC += cnt * pc;
+        g.ts = Math.max(g.ts, new Date(f.created_time || f.ts || 0).getTime() || 0);
+      });
+      Object.keys(groups).forEach(k => {
+        const g = groups[k];
+        const avg = g.count ? Math.max(1, Math.min(99, Math.round(g.costC / g.count))) : 0;
+        const cnt = Math.round(g.count);
+        const b = this.log.bets.find(x => x.ticker === g.ticker && x.side === g.side && !x.result) || this.log.bets.find(x => x.ticker === g.ticker && x.side === g.side);
+        if (b) {
+          // true fill price/size from Kalshi overrides our quoted numbers
+          if (b.live && !b.result && avg && cnt && (avg !== b.pc || cnt !== b.contracts)) {
+            b.pc = avg; b.contracts = cnt; b.fee = ((n2, p2) => Math.ceil(n2 * (Math.round(7 * (p2 / 100) * (1 - p2 / 100) * 10) / 10)) / 100)(cnt, avg); b.fillSync = true; dirty = true;
+          }
+        } else if (g.ts >= since && avg && cnt) {
+          // bet placed outside the desk — import it
+          this.log.bets.unshift({
+            id: "kalshi-" + g.ticker + "-" + g.side, title: g.ticker, full: g.ticker, ticker: g.ticker,
+            cat: this.tickerCat(g.ticker), side: g.side, pc: avg, contracts: cnt, fee: 0,
+            score: 0, edge: 0, winProb: 0, strat: "KALSHI", live: true, imported: true,
+            placedTs: g.ts, closeTs: g.ts, result: null, settledBy: null
+          });
+          this.pushEvent("\u25c9", "#5aa7e8", "IMPORTED from Kalshi \u00b7 " + g.side + " " + cnt + "x @ " + avg + "\u00a2 \u00b7 " + g.ticker);
+          dirty = true;
+        }
+      });
+      // ---- settlements: authoritative results + cash P&L ----
+      (j.settlements || []).forEach(s => {
+        const res = String(s.market_result || s.result || "").toLowerCase();
+        if (res !== "yes" && res !== "no") return;
+        this.log.bets.forEach(b => {
+          if (b.ticker !== s.ticker || b.result) return;
+          b.result = (b.side.toLowerCase() === res) ? "won" : "lost";
+          b.settledBy = "real";
+          let revC = parseFloat(s.revenue);
+          const revD = parseFloat(s.revenue_dollars);
+          if (isFinite(revD)) revC = revD * 100;
+          if (b.live && isFinite(revC)) b.realPnl = revC / 100 - (b.contracts * b.pc / 100);
+          this.pushEvent(b.result === "won" ? "\u2713" : "\u2717", b.result === "won" ? "#4fce7f" : "#e5636a",
+            "KALSHI SETTLED " + (b.result === "won" ? "WON " : "LOST ") + this.fmt$(this.pnlOf(b)) + " \u00b7 " + b.title);
+          dirty = true;
+        });
+      });
+      // live desk bets with NO fill 15 min after close never executed - void them (no money moved)
+      this.log.bets.forEach(b => {
+        if (b.live && !b.imported && !b.result && b.ticker && Date.now() > b.closeTs + 15 * 60000) {
+          const g = groups[b.ticker + "|" + b.side];
+          if (!g || !g.count) {
+            b.result = "void"; b.settledBy = "real"; b.realPnl = 0;
+            this.pushEvent("\u25cb", "#7d8697", "VOIDED (order never filled, $0) \u00b7 " + b.title);
+            dirty = true;
+          }
+        }
+      });
+      this.pfSynced = Date.now();
+      this.kalshiPositions = (j.positions || []).length;
+      if (dirty) { this.save(); this.setState({ rev: this.state.rev + 1 }); }
+    } catch (e) {}
+  }
+
+  async fetchStatus() {
+    try {
+      const r = await fetch("/api/trade?action=status", { headers: { "x-trade-secret": this.liveCfg.secret } });
+      this.liveStatus = await r.json();
+      this.liveStatus._httpOk = r.ok;
+    } catch (e) { this.liveStatus = { error: String(e) }; }
+    this.setState({ rev: this.state.rev + 1 });
+  }
+
+  livePnlToday() {
+    const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+    return ((this.log && this.log.bets) || []).filter(b => b.live && b.result && b.closeTs >= d0.getTime()).reduce((s, b) => s + this.pnlOf(b), 0);
+  }
+
+  disarm(reason) {
+    if (this.liveCfg) {
+      this.liveCfg.armed = false;
+      try { localStorage.setItem("kpd-live-v1", JSON.stringify(this.liveCfg)); } catch (e) {}
+    }
+    this.pushEvent("\u25a0", "#e5636a", "LIVE TRADING STOPPED \u2014 " + reason);
+    this.setState({ rev: this.state.rev + 1 });
+  }
+
+  async placeLive(c, betId) {
+    const cfg = this.liveCfg;
+    if (!cfg || !cfg.armed || !c.m.ticker) return;
+    if (this.livePnlToday() <= -(cfg.cap || 500)) { this.disarm("daily loss cap (-$" + (cfg.cap || 500) + ") reached"); return; }
+    const ask = c.side === "YES" ? (c.m._ask || c.pc) : (100 - (c.m._bid || (100 - c.pc)));
+    const price = Math.max(1, Math.min(99, Math.round(ask)));
+    const liveCount = Math.max(1, Math.floor(2500 / price)); // re-size so cost stays <= $25 at the actual limit price
+    try {
+      const r = await fetch("/api/trade", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-trade-secret": cfg.secret },
+        body: JSON.stringify({ ticker: c.m.ticker, side: c.side.toLowerCase(), count: liveCount, price })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j.order) {
+        this.pushEvent("\u25c9", "#4fce7f", "LIVE ORDER placed \u00b7 " + c.side + " " + liveCount + "x @ " + price + "\u00a2 \u00b7 " + c.m.t);
+        const b = this.log.bets.find(x => x.id === betId);
+        if (b) {
+          b.live = true; b.orderId = (j.order && j.order.order_id) || "";
+          // log reflects the order actually submitted, not the signal quote
+          b.pc = price; b.contracts = liveCount;
+          b.fee = ((n2, p2) => Math.ceil(n2 * (Math.round(7 * (p2 / 100) * (1 - p2 / 100) * 10) / 10)) / 100)(liveCount, price);
+          this.save();
+        }
+      } else {
+        this.pushEvent("\u25c9", "#e5636a", "LIVE ORDER rejected (" + (j.error || r.status) + ") \u00b7 " + c.m.t);
+      }
+    } catch (e) {
+      this.pushEvent("\u25c9", "#e5636a", "LIVE ORDER failed \u00b7 " + String((e && e.message) || e));
+    }
   }
 
   pushEvent(icon, color, text, opts) {
@@ -2399,6 +2684,7 @@ class Component extends DCLogic {
         closeTs: c.closeTs, result: null, settledBy: null
       });
       dirty = true;
+      if (this.liveCfg && this.liveCfg.armed) this.placeLive(c, id);
     }
     return dirty;
   }
@@ -2410,6 +2696,7 @@ class Component extends DCLogic {
     this.log.bets.forEach(b => {
       if (!b.result && now >= b.closeTs) {
         // Prefer the real Kalshi result while within the 20-min grace window
+        if (b.live) { if (b.ticker && this.kalshiBase) pendingReal.push(b); return; }
         if (b.ticker && this.kalshiBase && now < b.closeTs + 10 * 60000) { pendingReal.push(b); return; }
         const roll = this.rng(Math.imul(Math.floor(b.closeTs / 1000), 40503) ^ b.pc)();
         const winProb = Math.min(0.95, Math.max(0.05, b.pc / 100 + 0.03));
@@ -2457,6 +2744,7 @@ class Component extends DCLogic {
       this.customPool = p ? JSON.parse(p) : null;
       if (this.customPool && this.customPool.some(m => !m.closeTs)) this.customPool = null;
     } catch (e) { this.customPool = null; }
+    try { this.horizon = parseInt(localStorage.getItem("kpd-horizon-v1"), 10) || 60; } catch (e) { this.horizon = 60; }
     if (!this.log || !Array.isArray(this.log.bets)) {
       this.log = { startTs: Date.now(), bets: [] };
     }
@@ -2464,6 +2752,15 @@ class Component extends DCLogic {
 
   save() {
     try { localStorage.setItem(this.KEY, JSON.stringify(this.log)); } catch (e) {}
+  }
+
+  tryUnlock() {
+    if ((this.state.pw || "") === "20042004") {
+      try { localStorage.setItem("kpd-auth", "ok"); } catch (e) {}
+      this.setState({ auth: true, pw: "", pwErr: false });
+    } else {
+      this.setState({ pwErr: true });
+    }
   }
 
   resetLog() {
@@ -2474,6 +2771,8 @@ class Component extends DCLogic {
   }
 
   pnlOf(b) {
+    if (b.result === "void") return 0;
+    if (b.realPnl != null && b.result) return b.realPnl;
     const fee = b.fee || 0;
     if (b.result === "won") return b.contracts * (100 - b.pc) / 100 - fee;
     if (b.result === "lost") return -(b.contracts * b.pc / 100) - fee;
@@ -2488,7 +2787,7 @@ class Component extends DCLogic {
     const bets = (this.log && this.log.bets) || [];
     const fmtT = ts => new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
-    const settled = bets.filter(b => b.result).slice().sort((a, b) => a.closeTs - b.closeTs);
+    const settled = bets.filter(b => b.result === "won" || b.result === "lost").slice().sort((a, b) => a.closeTs - b.closeTs);
     const wins = settled.filter(b => b.result === "won");
     const totalPnl = settled.reduce((s, b) => s + this.pnlOf(b), 0);
 
@@ -2606,10 +2905,10 @@ class Component extends DCLogic {
         full: (b.ticker ? b.ticker + " \u00b7 " : "") + b.title,
         sideAt: b.side + " @ " + b.pc + "\u00a2",
         sideColor: b.side === "YES" ? "#4fce7f" : "#e8875a",
-        strat: b.strat,
-        result: done ? (won ? "WON" : "LOST") + (b.settledBy === "real" ? " \u2713" : "") : "OPEN",
-        resultColor: done ? (won ? "#4fce7f" : "#e5636a") : "#eab54e",
-        resultBg: done ? (won ? "#12281c" : "#2c1518") : "#2a2213",
+        strat: (b.live ? "\u25c9 LIVE \u00b7 " : "") + b.strat,
+        result: done ? (b.result === "void" ? "NO FILL" : (won ? "WON" : "LOST") + (b.settledBy === "real" ? " \u2713" : "")) : "OPEN",
+        resultColor: done ? (b.result === "void" ? "#7d8697" : won ? "#4fce7f" : "#e5636a") : "#eab54e",
+        resultBg: done ? (b.result === "void" ? "#1d222c" : won ? "#12281c" : "#2c1518") : "#2a2213",
         pnl: done ? this.fmt$(pnl) : (now >= b.closeTs ? "settles " + relTo(b.closeTs + 600000) : relTo(b.closeTs)),
         pnlColor: done ? (pnl >= 0 ? "#4fce7f" : "#e5636a") : "#7d8697"
       };
@@ -2661,20 +2960,42 @@ class Component extends DCLogic {
     return {
       todayLabel: new Date(now).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }).toUpperCase(),
       snapshotLabel: this.SNAPSHOT_LABEL,
-      bankroll: "$" + (start + totalPnl).toFixed(2),
+      bankroll: (this.liveStatus && this.liveStatus.balance != null) ? "$" + (this.liveStatus.balance / 100).toFixed(2) : "$" + (start + totalPnl).toFixed(2),
+      bankrollLabel: (this.liveStatus && this.liveStatus.balance != null) ? "KALSHI BALANCE \u00b7 LIVE" : "BANKROLL",
       totalPnl: this.fmt$(totalPnl),
+      pnlSplit: (() => {
+        const lv = settled.filter(b => b.live).reduce((s, b) => s + this.pnlOf(b), 0);
+        const pp = totalPnl - lv;
+        return "LIVE " + this.fmt$(lv) + " \u00b7 PAPER " + this.fmt$(pp);
+      })(),
       pnlColor: totalPnl >= 0 ? "#4fce7f" : "#e5636a",
       pnlPct: (totalPnl >= 0 ? "+" : "") + ((totalPnl / start) * 100).toFixed(1) + "%",
       hitRate: settled.length ? Math.round((wins.length / settled.length) * 100) + "%" : "\u2014",
       openRisk: "$" + openRisk.toFixed(2),
       scanStatus: openBets.length + " OPEN",
+      horizonOpts: [[60, "1H"], [240, "4H"], [720, "12H"], [1440, "24H"]].map(o => {
+        const on = this.horizonMins() === o[0];
+        return {
+          label: o[1],
+          bg: on ? "#1c2f22" : "#14181f",
+          border: on ? "#4fce7f" : "#2a303c",
+          color: on ? "#4fce7f" : "#7d8697",
+          pick: () => {
+            this.horizon = o[0];
+            try { localStorage.setItem("kpd-horizon-v1", String(o[0])); } catch (e) {}
+            clearTimeout(this.refetchT);
+            this.fetchLive();
+            this.forceUpdate();
+          }
+        };
+      }),
       scanSummary: cands.length + " positions scored \u00b7 " + qualify + " qualify \u00b7 sweeps every 5s",
       signals,
       hasBest: !!best,
       noBest: !best,
       best: best || {},
       noBestDetail: (this.dataMode === "live" || this.customPool)
-        ? cands.length + " positions scanned \u2014 none passed all 6 gates. Sweeping again every 5 seconds."
+        ? cands.length + " positions scanned \u2014 none passed all 7 gates. Sweeping again every 5 seconds."
         : (this.dataMode === "offline"
           ? "No live market feed reachable from this network. Retrying every 60 seconds \u2014 or paste real markets via MARKET POOL \u2192 EDIT."
           : "Connecting to live market feeds\u2026"),
@@ -2697,9 +3018,38 @@ class Component extends DCLogic {
         { name: "MODEL EDGE", pct: "15%" }
       ],
       catBoosts,
+      learnLines: this.learnModel(Date.now()).lines,
       candCount: cands.length,
       resetLog: () => this.resetLog(),
-      buildTag: "BUILD v15",
+      locked: !this.state.auth,
+      unlocked: this.state.auth,
+      pw: this.state.pw,
+      pwErr: this.state.pwErr,
+      onPwChange: (e) => this.setState({ pw: e.target.value, pwErr: false }),
+      pwKey: (e) => { if (e.key === "Enter") this.tryUnlock(); },
+      tryUnlock: () => this.tryUnlock(),
+      liveArmed: !!(this.liveCfg && this.liveCfg.armed),
+      liveDisarmed: !(this.liveCfg && this.liveCfg.armed),
+      liveChip: (this.liveCfg && this.liveCfg.armed) ? "ARMED \u00b7 FULL AUTO" : "DISARMED",
+      liveChipColor: (this.liveCfg && this.liveCfg.armed) ? "#e5636a" : "#7d8697",
+      liveChipBg: (this.liveCfg && this.liveCfg.armed) ? "#2c1518" : "#1d222c",
+      liveBalance: (this.liveStatus && this.liveStatus.balance != null) ? "$" + (this.liveStatus.balance / 100).toFixed(2) : (this.liveStatus && this.liveStatus.error ? "error" : "\u2014"),
+      liveStatusErr: (this.liveStatus && this.liveStatus.error) ? String(this.liveStatus.error) : "",
+      livePnlTodayLabel: this.fmt$(this.livePnlToday()),
+      livePnlTodayColor: this.livePnlToday() >= 0 ? "#4fce7f" : "#e5636a",
+      liveCapLabel: "auto-halt at \u2212$" + ((this.liveCfg && this.liveCfg.cap) || 500) + " day loss \u00b7 $30/order cap",
+      armLive: () => {
+        const secret = window.prompt("Enter your TRADE secret (the TRADE_SECRET env var you set on Vercel):");
+        if (!secret) return;
+        if (!window.confirm("ARM LIVE TRADING?\n\nReal $25 limit-at-ask orders will be placed automatically whenever all 7 gates pass. Auto-halt at \u2212$500 realized loss today. The STOP button disarms instantly.")) return;
+        this.liveCfg = { armed: true, since: (this.liveCfg && this.liveCfg.since) || Date.now(), secret, cap: 500 };
+        try { localStorage.setItem("kpd-live-v1", JSON.stringify(this.liveCfg)); } catch (e) {}
+        this.pushEvent("\u25c9", "#e5636a", "LIVE TRADING ARMED \u2014 full auto \u00b7 $25 limit-at-ask \u00b7 halt at \u2212$500/day");
+        this.lastBal = 0;
+        this.setState({ rev: this.state.rev + 1 });
+      },
+      stopLive: () => this.disarm("manual STOP"),
+      buildTag: "BUILD v23",
       events: (this.events || []).map(e => {
         const d = new Date(e.ts);
         const p2 = n => String(n).padStart(2, "0");

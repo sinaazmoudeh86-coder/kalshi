@@ -1,64 +1,58 @@
-# Kalshi Paper Desk — Deploy
+# Kalshi Live Desk — FINAL DEPLOYMENT (BUILD v37)
 
-A single-file, real-time paper-trading dashboard. No build step, no server code, no dependencies.
+3 files + this README. The repo root must look exactly like this:
 
-## Deploy to Vercel (recommended — guaranteed live feed)
+```
+index.html      <- the dashboard (header must say BUILD v37 after deploy)
+vercel.json     <- proxies /api/kalshi/* to Kalshi's market-data API
+api/
+  trade.js      <- signed order placement + portfolio sync (needs env vars)
+```
 
-1. Put BOTH files (`index.html` AND `vercel.json`) in your project root.
-2. Redeploy (git push, or `vercel --prod`, or drag the folder into vercel.com/new).
-3. `vercel.json` makes Vercel proxy `/api/kalshi/*` to Kalshi's API from your own
-   domain — the browser sees a same-origin request, so CORS cannot block it.
-4. Open the site: the badge should read `● LIVE · KALSHI` within seconds.
+## Deploy steps
 
-## Deploy to GitHub Pages (fallback feeds only)
+1. **Replace ALL files in the repo** with the ones in this package.
+   Easiest clean way on GitHub web: open each file → pencil icon → select-all →
+   paste the new contents → Commit. (Uploading duplicates like `index (3).html`
+   does nothing — the filename must be exactly `index.html` at the repo root,
+   and `trade.js` inside a folder named `api`.)
+2. Vercel auto-deploys on commit. Wait for "Ready".
+3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
+4. Check the header — it must say **BUILD v37**. If it shows an older number,
+   the repo file is still old: open the repo's `index.html` on GitHub and
+   search for "BUILD v" to see what's actually committed.
 
-1. Create a new GitHub repository (public is fine), e.g. `kalshi-paper-desk`.
-2. Upload `index.html` to the repo root.
-3. Repo **Settings → Pages → Build and deployment**:
-   - Source: **Deploy from a branch**
-   - Branch: **main**, folder **/ (root)** → Save.
-4. Wait ~1 minute, then open `https://<your-username>.github.io/kalshi-paper-desk/`.
+## Environment variables (Vercel → Settings → Environment Variables)
 
-## What to expect
+| Name | Value |
+|---|---|
+| `KALSHI_ACCESS_KEY` | your Kalshi API key ID (read/write key) |
+| `KALSHI_PRIVATE_KEY` | the key file, base64: `base64 -i key.pem \| tr -d '\n' \| pbcopy` |
+| `TRADE_SECRET` | passphrase you invent — typed when arming |
+| `TRADING_HALTED` | (optional) set to `true` as a remote kill switch |
 
-- Badge top-left shows the data source:
-  - `● LIVE · KALSHI` — Kalshi API connected directly (best case)
-  - `● LIVE · KALSHI VIA RELAY` — Kalshi via a public CORS relay (works, can be slow)
-  - `● LIVE · POLYMARKET` — fallback to Polymarket's real markets
-  - `FEED OFFLINE — RETRYING` — no feed reachable; retries every 60s
-- The scanner sweeps every 5 seconds and auto-places $25 paper bets when all
-  6 entry gates pass (settles in 5–60 min, 55–90¢ band, volume ≥ $500,
-  edge ≥ +2.5¢, score ≥ 60, not already held). New entries blink green.
-- Everything is automatic: entry, settlement, P&L, hit rate, avg edge.
-- All state lives in the browser (localStorage): it only runs while a tab is
-  open, and the log is per-browser/per-device.
+Env changes require a Redeploy (Deployments → ⋯ → Redeploy).
 
-## Live trading (optional — real money)
+## Using it
 
-The `api/trade.js` serverless function places real Kalshi orders, signed
-server-side so your private key never reaches the browser.
+- Site password: `20042004`
+- ARM: LIVE TRADING panel → ARM → enter your TRADE_SECRET.
+  Balance appearing = the whole chain works.
+- Armed: every signal clearing all 8 gates places a real $25 limit order.
+  Log pills: ORDER (resting) / PARTIAL / PLACED (filled) with live win %.
+  Resting orders are re-audited every sweep and canceled if the thesis breaks,
+  the price runs away, or 10 min pass unfilled. Rejected orders are voided.
+- Log reconciles against real Kalshi fills, settlements & positions every 30s
+  (✓ = real result); ACCOUNT SYNC panel shows IN SYNC / MISMATCH + SYNC NOW.
+- SETTLE HORIZON: AUTO (default) widens 1h→4h→12h→24h when the pool is thin.
+- Domain models: crypto 0DTE gamma/fee logic + weather diurnal ratchet logic (8th gate).
+- Learning module: calibration-based extra edge, category cooldowns, circuit breaker.
+- Money-flow chart (cash vs in-bets), static live market strip with sparklines,
+  browser notifications when tab hidden, screen wake-lock while armed.
+- LEARNING MODULE: adapts required edge from calibration, cools down losing
+  categories (3 straight losses = 2h block), circuit-breaks after 5 straight losses.
+- Safety: −$500/day auto-halt, $30/order server cap, ■ STOP LIVE disarms instantly,
+  `TRADING_HALTED=true` kills orders server-side.
+- The desk only scans/trades while a browser tab is open.
 
-1. On kalshi.com → Settings → API: create an API key. You get a key ID and
-   an RSA private key file.
-2. Vercel → Project → Settings → Environment Variables, add:
-   - `KALSHI_ACCESS_KEY` — the key ID
-   - `KALSHI_PRIVATE_KEY` — paste the full PEM (or base64 of it)
-   - `TRADE_SECRET` — any passphrase you choose
-3. Redeploy. In the dashboard, LIVE TRADING panel → ARM → enter your
-   TRADE_SECRET. From then on, every qualified signal also fires a real
-   $25 limit-at-ask order.
-4. Guardrails: auto-halt at −$500 realized loss per day, $30/order server
-   cap, STOP button disarms instantly, and `TRADING_HALTED=true` env var
-   is a server-side kill switch.
-
-Real trading risks real losses. The model's edge is heuristic — validate
-your paper hit rate over hundreds of bets before arming.
-
-## Notes
-
-- Settlement: for Kalshi-fed bets the desk fetches the market's REAL result at
-  close (marked ✓ in the log); odds-based simulation is only a fallback if the
-  result isn't available within 20 minutes.
-- If GitHub Pages always shows FEED OFFLINE, use the Vercel route above — the
-  proxy makes the feed unconditional.
-- Paper trading only. Not financial advice.
+Not financial advice. The edge is unproven — treat every session as an experiment.

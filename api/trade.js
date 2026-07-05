@@ -116,16 +116,39 @@ module.exports = async (req, res) => {
       }
       return res.status(200).json(out);
     }
+    if (req.method === "GET" && req.url && req.url.includes("action=portfolio")) {
+      const [f, s, p] = await Promise.all([
+        kalshi("GET", "/trade-api/v2/portfolio/fills?limit=100"),
+        kalshi("GET", "/trade-api/v2/portfolio/settlements?limit=100"),
+        kalshi("GET", "/trade-api/v2/portfolio/positions?limit=200&count_filter=position&settlement_status=unsettled")
+      ]);
+      return res.status(200).json({
+        fills: (f.json && f.json.fills) || [],
+        settlements: (s.json && s.json.settlements) || [],
+        positions: (p.json && (p.json.market_positions || p.json.positions)) || [],
+        errors: [["fills", f], ["settlements", s], ["positions", p]].filter(x => x[1].status >= 300).map(x => x[0] + ":" + x[1].status)
+      });
+    }
     if (req.method === "GET") {
       const bal = await kalshi("GET", "/trade-api/v2/portfolio/balance");
       if (bal.status >= 200 && bal.status < 300) {
-        return res.status(200).json({ balance: bal.json && bal.json.balance, via: bal.base });
+        return res.status(200).json({ balance: bal.json && bal.json.balance, via: bal.base, srv: 36 });
       }
       const msg = (bal.json && ((bal.json.error && bal.json.error.message) || bal.json.message || bal.json.error)) || ("kalshi " + bal.status);
       return res.status(502).json({ error: String(msg), via: bal.base });
     }
     if (req.method === "POST") {
       const b = typeof req.body === "string" ? JSON.parse(req.body) : (req.body || {});
+      if (b.action === "cancel") {
+        if (!b.order_id) return res.status(400).json({ error: "missing order_id" });
+        let r = await kalshi("DELETE", "/trade-api/v2/portfolio/events/orders/" + encodeURIComponent(b.order_id));
+        if (r.status === 404 || r.status === 405 || r.status === 410) {
+          r = await kalshi("DELETE", "/trade-api/v2/portfolio/orders/" + encodeURIComponent(b.order_id));
+        }
+        if (r.status >= 200 && r.status < 300) return res.status(200).json({ canceled: true, via: r.base });
+        const cmsg = (r.json && ((r.json.error && r.json.error.message) || r.json.message)) || ("kalshi " + r.status);
+        return res.status(502).json({ error: String(cmsg), via: r.base });
+      }
       const ticker = b.ticker, side = b.side, count = Math.floor(b.count), price = Math.round(b.price);
       if (!ticker || (side !== "yes" && side !== "no") || !(count >= 1) || !(price >= 1 && price <= 99)) {
         return res.status(400).json({ error: "bad order params" });

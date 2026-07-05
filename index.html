@@ -1787,18 +1787,18 @@
     </div>
   </div>
 
-  <!-- Ticker tape -->
+  <!-- Market strip (static, live-updating) -->
   <sc-if value="{{ tapeHas }}" hint-placeholder-val="{{ false }}">
-    <div style="border-bottom: 1px solid #1a1f28; background: #0f1116; overflow: hidden;">
-      <div style="display: flex; width: max-content; animation: kpdTape 55s linear infinite;">
-        <sc-for list="{{ tapeItems }}" as="tp" hint-placeholder-count="10">
-          <div style="display: flex; align-items: center; gap: 8px; padding: 7px 18px; border-right: 1px solid #1a1f28; white-space: nowrap;">
-            <span style="width: 6px; height: 6px; border-radius: 1px; background: {{ tp.color }}; display: inline-block;"></span>
-            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #8b93a3;">{{ tp.title }}</span>
-            <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; color: {{ tp.priceColor }};">{{ tp.price }}</span>
-          </div>
-        </sc-for>
-      </div>
+    <div style="border-bottom: 1px solid #1a1f28; background: #0f1116; padding: 10px 32px; display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px;">
+      <sc-for list="{{ tapeItems }}" as="tp" hint-placeholder-count="8">
+        <div style="display: flex; align-items: center; gap: 8px; background: #12161d; border: 1px solid #1d232e; border-radius: 6px; padding: 7px 10px; min-width: 0;" style-hover="border-color: #2a3444;">
+          <span style="width: 6px; height: 6px; border-radius: 1px; background: {{ tp.color }}; flex: none;"></span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #8b93a3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0;" title="{{ tp.full }}">{{ tp.title }}</span>
+          <svg viewBox="0 0 40 14" style="width: 40px; height: 14px; flex: none;"><polyline points="{{ tp.spark }}" fill="none" stroke="{{ tp.sparkColor }}" stroke-width="1.2"></polyline></svg>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600; color: {{ tp.priceColor }}; flex: none;">{{ tp.price }}</span>
+          <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: {{ tp.deltaColor }}; flex: none;">{{ tp.delta }}</span>
+        </div>
+      </sc-for>
     </div>
   </sc-if>
 
@@ -2686,6 +2686,12 @@ class Component extends DCLogic {
       const r = await fetch("/api/trade?action=portfolio", { headers: { "x-trade-secret": this.liveCfg.secret } });
       if (!r.ok) return;
       const j = await r.json();
+      if (!Array.isArray(j.fills) && !Array.isArray(j.positions)) {
+        this.srvOld = true;
+        this.pushEvent("\u25cb", "#e5636a", "SERVER OUTDATED: api/trade.js on Vercel is an old version \u2014 redeploy it (sync + cancel disabled until then)", { kind: "srvold", coalesce: true });
+        return;
+      }
+      this.srvOld = false;
       let dirty = false;
       this.pfStats = { fills: (j.fills || []).length, setts: (j.settlements || []).length, pos: (j.positions || []).length, errors: j.errors || [] };
       const since = this.liveCfg.since || (Date.now() - 86400000);
@@ -2862,6 +2868,7 @@ class Component extends DCLogic {
       const r = await fetch("/api/trade?action=status", { headers: { "x-trade-secret": this.liveCfg.secret } });
       this.liveStatus = await r.json();
       this.liveStatus._httpOk = r.ok;
+      if (r.ok && this.liveStatus && this.liveStatus.balance != null && !this.liveStatus.srv) this.srvOld = true;
       this.recordSample();
     } catch (e) { this.liveStatus = { error: String(e) }; }
     this.setState({ rev: this.state.rev + 1 });
@@ -2908,8 +2915,13 @@ class Component extends DCLogic {
         this.pushEvent("\u2716", "#eab54e", "ORDER CANCELED (" + why + ") \u00b7 " + b.title);
         this.voidBet(b.id, "canceled: " + why);
       } else {
-        b._cancelling = false;
-        this.pushEvent("\u2716", "#e5636a", "cancel failed (" + (j.error || r.status) + ") \u00b7 " + b.title);
+        b._cancelFails = (b._cancelFails || 0) + 1;
+        if (b._cancelFails >= 3) {
+          this.pushEvent("\u2716", "#e5636a", "cancel failed 3x (" + (j.error || r.status) + ") \u2014 pausing retries; likely outdated api/trade.js \u00b7 " + b.title);
+        } else {
+          b._cancelling = false;
+          this.pushEvent("\u2716", "#e5636a", "cancel failed (" + (j.error || r.status) + ") \u00b7 " + b.title);
+        }
       }
     } catch (e) { b._cancelling = false; }
   }
@@ -3355,14 +3367,33 @@ class Component extends DCLogic {
       bankroll: (this.liveStatus && this.liveStatus.balance != null) ? "$" + (this.liveStatus.balance / 100).toFixed(2) : "$" + (start + totalPnl).toFixed(2),
       bankrollLabel: (this.liveStatus && this.liveStatus.balance != null) ? "KALSHI BALANCE \u00b7 LIVE" : "BANKROLL",
       ...(() => {
-        const pool = (this.customPool || this.livePool || []).slice(0, 20);
-        const items = pool.map(m => ({
-          title: (m.t || "").slice(0, 46),
-          price: m.yes + "\u00a2 YES",
-          priceColor: m.yes >= 50 ? "#4fce7f" : "#e8875a",
-          color: this.catColor(m.c)
-        }));
-        return { tapeHas: items.length >= 3, tapeItems: items.concat(items) };
+        const pool = (this.customPool || this.livePool || []).slice(0, 12);
+        const items = pool.map(m => {
+          const hist = (this.pHist && m.ticker && this.pHist[m.ticker]) || [];
+          const recent = hist.slice(-12);
+          let spark = "", sparkColor = "#3a465c";
+          if (recent.length >= 2) {
+            const lo = Math.min.apply(null, recent.map(h => h.yes));
+            const hi = Math.max.apply(null, recent.map(h => h.yes));
+            const span = Math.max(hi - lo, 2);
+            spark = recent.map((h, i) => (i / (recent.length - 1) * 40).toFixed(1) + "," + (12 - ((h.yes - lo) / span) * 10).toFixed(1)).join(" ");
+            sparkColor = recent[recent.length - 1].yes >= recent[0].yes ? "#4fce7f" : "#e5636a";
+          }
+          const past = hist.filter(h => h.ts <= now - 8 * 60000);
+          const old = past.length ? past[past.length - 1] : hist[0];
+          const d = old ? m.yes - old.yes : 0;
+          return {
+            title: (m.t || "").slice(0, 40),
+            full: m.t || "",
+            price: m.yes + "\u00a2",
+            priceColor: m.yes >= 50 ? "#4fce7f" : "#e8875a",
+            color: this.catColor(m.c),
+            spark, sparkColor,
+            delta: d ? ((d > 0 ? "+" : "") + d + "\u00a2") : "\u00b7",
+            deltaColor: d > 0 ? "#4fce7f" : d < 0 ? "#e5636a" : "#4a5261"
+          };
+        });
+        return { tapeHas: items.length >= 3, tapeItems: items };
       })(),
       streakDots: settled.slice(-20).map(b => ({ c: b.result === "won" ? "#4fce7f" : "#e5636a" })),
       ...(() => {
@@ -3380,8 +3411,8 @@ class Component extends DCLogic {
           syncMatchBg: kOpen == null ? "#1d222c" : (kOpen === dOpen ? "#12281c" : "#2c1518"),
           syncFills: st.fills != null ? String(st.fills) : "\u2014",
           syncSetts: st.setts != null ? String(st.setts) : "\u2014",
-          syncErr: (st.errors && st.errors.length) ? "endpoint errors: " + st.errors.join(", ") : "",
-          syncHasErr: !!(st.errors && st.errors.length),
+          syncErr: this.srvOld ? "api/trade.js on the server is OUTDATED \u2014 replace it in the repo and redeploy. Sync, cancel and audit are paused until then." : ((st.errors && st.errors.length) ? "endpoint errors: " + st.errors.join(", ") : ""),
+          syncHasErr: this.srvOld || !!(st.errors && st.errors.length),
           syncNow: () => {
             this.lastPf = Date.now(); this.lastBal = Date.now();
             this.pushEvent("\u27f3", "#5aa7e8", "manual account sync requested");
@@ -3477,7 +3508,7 @@ class Component extends DCLogic {
         this.setState({ rev: this.state.rev + 1 });
       },
       stopLive: () => this.disarm("manual STOP"),
-      buildTag: "BUILD v35",
+      buildTag: "BUILD v37",
       events: (this.events || []).map(e => {
         const d = new Date(e.ts);
         const p2 = n => String(n).padStart(2, "0");

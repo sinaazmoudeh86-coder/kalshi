@@ -1951,7 +1951,7 @@
             <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: {{ b.color }}; border: 1px solid #232936; border-radius: 3px; padding: 2px 7px;">{{ b.name }} ×{{ b.mult }}</div>
           </sc-for>
         </div>
-        <div style="font-size: 10px; color: #5c6474; line-height: 1.5; margin-top: 12px;">{{ candCount }} positions re-scored every 5 seconds. A $25 bet fires the moment all 6 gates pass: settles in 5–60 min, 55–92¢ favorite band, 24h volume ≥ $500, net edge ≥ +2.5¢ after Kalshi fees (~7% × p × (1−p) per contract), composite score ≥ 60 (win odds × income × category form), and not already holding the market. No position caps — every qualified edge is taken.</div>
+        <div style="font-size: 10px; color: #5c6474; line-height: 1.5; margin-top: 12px;">{{ candCount }} positions re-scored every 5 seconds. A $25 bet fires the moment all 6 gates pass: settles in 5–60 min, 55–92¢ favorite band, 24h volume ≥ $100, net edge ≥ +2.5¢ after Kalshi fees (~7% × p × (1−p) per contract), composite score ≥ 60 (win odds × income × category form), and not already holding the market. No position caps — every qualified edge is taken.</div>
       </div>
 
       <!-- Category breakdown -->
@@ -2346,7 +2346,7 @@ class Component extends DCLogic {
         const gates = [
           { k: "T-MINUS", label: "settles in 5\u201360 min", pass: minsLeft >= 5 && minsLeft <= 60, val: Math.max(0, Math.round(minsLeft)) + "m" },
           { k: "WIN ODDS", label: "price in 55\u201392\u00a2 favorite band", pass: pc >= 55 && pc <= 92, val: pc + "\u00a2" },
-          { k: "LIQUIDITY", label: "24h volume \u2265 $500", pass: vol >= 500, val: "$" + volLabel },
+          { k: "LIQUIDITY", label: "24h volume \u2265 $100", pass: vol >= 100, val: "$" + volLabel },
           { k: "NET EDGE", label: "signal \u2265 +2.5\u00a2 after Kalshi fees", pass: netEdge >= 2.5, val: (netEdge >= 0 ? "+" : "") + netEdge + "\u00a2" },
           { k: "SCORE", label: "composite \u00d7 category form \u2265 60", pass: score >= 60, val: String(score) },
           { k: "DUPLICATE", label: "not already holding this market", pass: !dupe, val: dupe ? "held" : "clear" }
@@ -2410,7 +2410,7 @@ class Component extends DCLogic {
     this.log.bets.forEach(b => {
       if (!b.result && now >= b.closeTs) {
         // Prefer the real Kalshi result while within the 20-min grace window
-        if (b.ticker && this.kalshiBase && now < b.closeTs + 20 * 60000) { pendingReal.push(b); return; }
+        if (b.ticker && this.kalshiBase && now < b.closeTs + 10 * 60000) { pendingReal.push(b); return; }
         const roll = this.rng(Math.imul(Math.floor(b.closeTs / 1000), 40503) ^ b.pc)();
         const winProb = Math.min(0.95, Math.max(0.05, b.pc / 100 + 0.03));
         b.result = roll < winProb ? "won" : "lost";
@@ -2592,7 +2592,7 @@ class Component extends DCLogic {
     const avgEdge = edged.length ? "+" + (edged.reduce((s, b) => s + b.edge, 0) / edged.length).toFixed(1) + "\u00a2" : "\u2014";
 
     // ---- log ----
-    const relTo = ts => { const d = ts - now; if (d <= 0) return "settling\u2026"; const h = Math.floor(d / 3600000), m2 = Math.floor((d % 3600000) / 60000); return h > 0 ? "in " + h + "h " + m2 + "m" : "in " + Math.max(1, m2) + "m"; };
+    const relTo = ts => { const d = ts - now; if (d <= 0) return "now"; const h = Math.floor(d / 3600000), m2 = Math.floor((d % 3600000) / 60000); return h > 0 ? "in " + h + "h " + m2 + "m" : "in " + Math.max(1, m2) + "m"; };
     const filter = this.state.filter || "all";
     const visible = bets.filter(b => filter === "all" ? true : filter === "open" ? !b.result : !!b.result);
     const logRows = visible.slice().sort((a, b) => (b.placedTs || 0) - (a.placedTs || 0)).map(b => {
@@ -2610,7 +2610,7 @@ class Component extends DCLogic {
         result: done ? (won ? "WON" : "LOST") + (b.settledBy === "real" ? " \u2713" : "") : "OPEN",
         resultColor: done ? (won ? "#4fce7f" : "#e5636a") : "#eab54e",
         resultBg: done ? (won ? "#12281c" : "#2c1518") : "#2a2213",
-        pnl: done ? this.fmt$(pnl) : relTo(b.closeTs),
+        pnl: done ? this.fmt$(pnl) : (now >= b.closeTs ? "settles " + relTo(b.closeTs + 600000) : relTo(b.closeTs)),
         pnlColor: done ? (pnl >= 0 ? "#4fce7f" : "#e5636a") : "#7d8697"
       };
     });
@@ -2699,7 +2699,7 @@ class Component extends DCLogic {
       catBoosts,
       candCount: cands.length,
       resetLog: () => this.resetLog(),
-      buildTag: "BUILD v14",
+      buildTag: "BUILD v15",
       events: (this.events || []).map(e => {
         const d = new Date(e.ts);
         const p2 = n => String(n).padStart(2, "0");

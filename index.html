@@ -2053,6 +2053,7 @@ class Component extends DCLogic {
     const cents = (c, d) => { const n = num(c); if (n > 0) return Math.round(n); return Math.round(num(d) * 100); };
     const mapped = (j.markets || [])
       .filter(m => !m.status || m.status === "active")
+      .filter(m => !m.mve_collection_ticker && !(m.ticker || "").includes("KXMVE") && !(m.event_ticker || "").includes("KXMVE"))
       .map(m => {
         const bid = cents(m.yes_bid, m.yes_bid_dollars);
         const ask = cents(m.yes_ask, m.yes_ask_dollars) || 100;
@@ -2103,12 +2104,20 @@ class Component extends DCLogic {
     const Q2 = "/markets?limit=1000&status=open";
     const diag = [];
     const tryKalshi = async (name, base, q, wrap) => {
-      const url = wrap ? wrap(base + q) : base + q;
       try {
-        const j = await this.fetchJson(url, wrap ? 15000 : 10000);
-        const total = (j.markets || []).length;
-        const pool = this.mapKalshi(j);
-        diag.push(name + ": " + total + " markets, " + pool.length + " tradable sub-1h");
+        let cursor = "", all = [], pages = 0, total = 0, pool = [];
+        do {
+          const u0 = base + q + (cursor ? "&cursor=" + encodeURIComponent(cursor) : "");
+          const j = await this.fetchJson(wrap ? wrap(u0) : u0, wrap ? 15000 : 10000);
+          const page = j.markets || [];
+          total += page.length;
+          all = all.concat(page);
+          cursor = j.cursor || "";
+          pages++;
+          pool = this.mapKalshi({ markets: all });
+          if (pool.length >= 12) break;
+        } while (cursor && pages < 8);
+        diag.push(name + ": " + total + " markets/" + pages + "pg, " + pool.length + " tradable sub-1h");
         if (pool.length >= 3) return { pool, base: wrap ? null : base, name };
       } catch (e) {
         diag.push(name + ": " + (e && e.message ? e.message : "failed"));
@@ -2552,7 +2561,7 @@ class Component extends DCLogic {
       catBoosts,
       candCount: cands.length,
       resetLog: () => this.resetLog(),
-      buildTag: "BUILD v7",
+      buildTag: "BUILD v8",
       feedDiag: (this.feedDiag || ["feed check pending\u2026"]).map(l => ({ line: l })),
       dataBadge: this.customPool ? "YOUR MARKETS \u00b7 " + this.customPool.length : (this.dataMode === "live" ? "\u25cf LIVE \u00b7 " + (this.liveSource || "KALSHI") : (this.dataMode === "offline" ? "FEED OFFLINE \u2014 RETRYING" : "CONNECTING\u2026")),
       dataBadgeColor: this.customPool ? "#5aa7e8" : (this.dataMode === "live" ? "#4fce7f" : (this.dataMode === "offline" ? "#e5636a" : "#eab54e")),

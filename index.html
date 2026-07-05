@@ -1709,6 +1709,8 @@
     ::-webkit-scrollbar-track { background: transparent; }
     @keyframes kpdPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
     @keyframes kpdBlink { 0%, 100% { box-shadow: 0 0 0 0 rgba(79, 206, 127, 0); } 50% { box-shadow: 0 0 0 3px rgba(79, 206, 127, 0.55); } }
+    @keyframes kpdSweep { 0% { transform: translateX(-100%); } 100% { transform: translateX(400%); } }
+    body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
   </style>
 </helmet>
 
@@ -1750,6 +1752,9 @@
           <span style="width: 8px; height: 8px; border-radius: 50%; background: #4fce7f; display: inline-block; animation: kpdPulse 1.6s ease-in-out infinite;"></span>
           <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: #4fce7f;">{{ scanStatus }}</div>
         </div>
+        <div style="height: 2px; width: 100%; background: #1d232e; border-radius: 1px; overflow: hidden; margin-top: 2px;">
+          <div style="height: 100%; width: 30%; background: linear-gradient(90deg, transparent, #4fce7f); animation: kpdSweep 5s linear infinite;"></div>
+        </div>
       </div>
       <button onClick="{{ resetLog }}" style="background: none; border: 1px solid #2a303c; border-radius: 3px; color: #7d8697; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.08em; padding: 6px 12px; cursor: pointer;" style-hover="border-color: #e5636a; color: #e5636a;">RESET LOG</button>
     </div>
@@ -1768,7 +1773,7 @@
           <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #7d8697;">{{ scanSummary }}</div>
         </div>
         <sc-if value="{{ hasBest }}" hint-placeholder-val="{{ true }}">
-          <div style="background: #14181f; border: 1px solid {{ best.borderColor }}; border-radius: 6px; padding: 18px; display: flex; gap: 22px; flex-wrap: wrap; animation: {{ best.anim }};">
+          <div style="background: linear-gradient(180deg, #161b23, #13171e); border: 1px solid {{ best.borderColor }}; border-radius: 6px; padding: 18px; display: flex; gap: 22px; flex-wrap: wrap; animation: {{ best.anim }}; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);">
             <div style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 10px;">
               <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
                 <div style="font-size: 10px; letter-spacing: 0.1em; color: {{ best.catColor }}; font-weight: 700;">{{ best.cat }}</div>
@@ -1802,40 +1807,6 @@
             <div style="font-size: 11px; color: #7d8697;">{{ noBestDetail }}</div>
           </div>
         </sc-if>
-      </div>
-
-      <!-- Live signals -->
-      <div>
-        <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 10px 0;">
-          <div style="font-size: 12px; letter-spacing: 0.12em; color: #aab2c0; font-weight: 700;">LIVE SIGNALS · WATCHLIST</div>
-          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #7d8697;">auto-entered the moment all 6 gates pass</div>
-        </div>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px;">
-          <sc-for list="{{ signals }}" as="s" hint-placeholder-count="3">
-            <div style="background: #14181f; border: 1px solid {{ s.borderColor }}; border-radius: 6px; padding: 14px; display: flex; flex-direction: column; gap: 10px; animation: {{ s.anim }};">
-              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                <div style="font-size: 10px; letter-spacing: 0.1em; color: {{ s.catColor }}; font-weight: 700;">{{ s.cat }}</div>
-                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; color: {{ s.statusColor }}; background: {{ s.statusBg }}; border-radius: 3px; padding: 2px 8px;">{{ s.status }}</div>
-              </div>
-              <div style="font-size: 13px; line-height: 1.4; font-weight: 700; color: #e6e9ef; min-height: 36px;">{{ s.title }}</div>
-              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: #0d0f13; background: {{ s.sideBg }}; border-radius: 3px; padding: 3px 9px;">{{ s.side }} {{ s.price }}¢</div>
-                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #eab54e;">settles in {{ s.settleIn }}</div>
-                <button onClick="{{ s.copyName }}" style="background: none; border: 1px solid #2a303c; border-radius: 3px; color: #7d8697; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.06em; padding: 2px 8px; cursor: pointer; white-space: nowrap; margin-left: auto;" style-hover="border-color: #3a465c; color: #e6e9ef;">{{ s.copyLabel }}</button>
-              </div>
-              <div style="display: flex; flex-direction: column; gap: 5px; border-top: 1px solid #20242e; padding-top: 9px;">
-                <sc-for list="{{ s.gates }}" as="g" hint-placeholder-count="5">
-                  <div style="display: grid; grid-template-columns: 14px 88px 1fr auto; gap: 8px; align-items: center;">
-                    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: {{ g.color }};">{{ g.icon }}</div>
-                    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.06em; color: #7d8697;">{{ g.k }}</div>
-                    <div style="font-size: 10px; color: #5c6474;">{{ g.label }}</div>
-                    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: {{ g.color }};">{{ g.val }}</div>
-                  </div>
-                </sc-for>
-              </div>
-            </div>
-          </sc-for>
-        </div>
       </div>
 
       <!-- Bet log -->
@@ -1876,10 +1847,71 @@
         </div>
         <div style="font-size: 10px; color: #5c6474; margin-top: 8px; line-height: 1.5;">Fully automated — the scanner places entries, settles them at market close, and updates P&L, hit rate and bankroll on its own. No input needed.</div>
       </div>
+
+      <!-- Live signals -->
+      <div>
+        <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 10px 0;">
+          <div style="font-size: 12px; letter-spacing: 0.12em; color: #aab2c0; font-weight: 700;">LIVE SIGNALS · WATCHLIST</div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #7d8697;">auto-entered the moment all 6 gates pass</div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px;">
+          <sc-for list="{{ signals }}" as="s" hint-placeholder-count="3">
+            <div style="background: #14181f; border: 1px solid {{ s.borderColor }}; border-radius: 6px; padding: 14px; display: flex; flex-direction: column; gap: 10px; animation: {{ s.anim }};">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                <div style="font-size: 10px; letter-spacing: 0.1em; color: {{ s.catColor }}; font-weight: 700;">{{ s.cat }}</div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 600; color: {{ s.statusColor }}; background: {{ s.statusBg }}; border-radius: 3px; padding: 2px 8px;">{{ s.status }}</div>
+              </div>
+              <div style="font-size: 13px; line-height: 1.4; font-weight: 700; color: #e6e9ef; min-height: 36px;">{{ s.title }}</div>
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: #0d0f13; background: {{ s.sideBg }}; border-radius: 3px; padding: 3px 9px;">{{ s.side }} {{ s.price }}¢</div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #eab54e;">settles in {{ s.settleIn }}</div>
+                <button onClick="{{ s.copyName }}" style="background: none; border: 1px solid #2a303c; border-radius: 3px; color: #7d8697; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.06em; padding: 2px 8px; cursor: pointer; white-space: nowrap; margin-left: auto;" style-hover="border-color: #3a465c; color: #e6e9ef;">{{ s.copyLabel }}</button>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 5px; border-top: 1px solid #20242e; padding-top: 9px;">
+                <sc-for list="{{ s.gates }}" as="g" hint-placeholder-count="5">
+                  <div style="display: grid; grid-template-columns: 14px 88px 1fr auto; gap: 8px; align-items: center;">
+                    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: {{ g.color }};">{{ g.icon }}</div>
+                    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.06em; color: #7d8697;">{{ g.k }}</div>
+                    <div style="font-size: 10px; color: #5c6474;">{{ g.label }}</div>
+                    <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: {{ g.color }};">{{ g.val }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
     </div>
 
     <!-- Right column -->
     <div style="display: flex; flex-direction: column; gap: 20px; flex: 1 1 300px; min-width: 280px;">
+
+      <!-- Activity feed -->
+      <div style="background: #14181f; border: 1px solid #232936; border-radius: 6px; padding: 16px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+          <div style="font-size: 11px; letter-spacing: 0.12em; color: #aab2c0; font-weight: 700;">ACTIVITY</div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="width: 6px; height: 6px; border-radius: 50%; background: #4fce7f; display: inline-block; animation: kpdPulse 1.2s ease-in-out infinite;"></span>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #7d8697;">sweeping every 5s</div>
+          </div>
+        </div>
+        <div style="height: 2px; background: #1d232e; border-radius: 1px; overflow: hidden; margin-bottom: 12px;">
+          <div style="height: 100%; width: 30%; background: linear-gradient(90deg, transparent, #4fce7f); animation: kpdSweep 5s linear infinite;"></div>
+        </div>
+        <sc-if value="{{ eventsEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #5c6474;">warming up…</div>
+        </sc-if>
+        <div style="display: flex; flex-direction: column; gap: 7px; max-height: 250px; overflow-y: auto;">
+          <sc-for list="{{ events }}" as="e" hint-placeholder-count="5">
+            <div style="display: grid; grid-template-columns: 50px 14px 1fr; gap: 6px; align-items: start;">
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; color: #4a5261; padding-top: 1px;">{{ e.time }}</div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: {{ e.color }};">{{ e.icon }}</div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #8b93a3; line-height: 1.45; overflow-wrap: anywhere;">{{ e.text }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
 
       <!-- Bankroll chart -->
       <div style="background: #14181f; border: 1px solid #232936; border-radius: 6px; padding: 16px;">
@@ -2169,6 +2201,7 @@ class Component extends DCLogic {
     }
     this.feedDiag = diag;
     if (winner) {
+      this.pushEvent("\u27f3", "#5aa7e8", "feed connected \u00b7 " + winner.name + " \u00b7 " + winner.pool.length + " sub-1h markets", { kind: "feed", coalesce: true });
       this.livePool = winner.pool;
       this.dataMode = "live";
       this.liveSource = winner.name;
@@ -2181,8 +2214,10 @@ class Component extends DCLogic {
       if (this.livePool.length) {
         this.dataMode = "live";
         diag.push("refresh thin \u2014 serving cached pool (" + this.livePool.length + "), retrying in 30s");
+        this.pushEvent("\u27f3", "#eab54e", "feed refresh thin \u2014 serving cached pool (" + this.livePool.length + "), retrying in 30s", { kind: "feed", coalesce: true });
       } else {
         this.dataMode = "offline";
+        this.pushEvent("\u27f3", "#e5636a", "all feeds unreachable \u2014 retrying in 30s", { kind: "feed", coalesce: true });
       }
       clearTimeout(this.refetchT);
       this.refetchT = setTimeout(() => this.fetchLive(), 30000);
@@ -2275,17 +2310,39 @@ class Component extends DCLogic {
     return cands;
   }
 
+  pushEvent(icon, color, text, opts) {
+    this.events = this.events || [];
+    const e = { ts: Date.now(), icon, color, text, kind: (opts && opts.kind) || "" };
+    if (opts && opts.coalesce && this.events.length && this.events[0].kind === e.kind) this.events[0] = e;
+    else this.events.unshift(e);
+    if (this.events.length > 50) this.events.length = 50;
+  }
+
   scan(now) {
     if (!this.log) return false;
     if (now - (this.lastScan || 0) < 5000) return false;
     this.lastScan = now;
     let dirty = false;
     const cands = this.evaluate(now);
+    this.sweepN = (this.sweepN || 0) + 1;
+    const nQual = cands.filter(c => c.pass).length;
+    if (cands.length) this.pushEvent("\u00b7", "#5c6474", "sweep #" + this.sweepN + " \u2014 " + cands.length + " positions scored, " + nQual + " qualify", { kind: "sweep", coalesce: true });
+    else this.pushEvent("\u00b7", "#5c6474", "sweep #" + this.sweepN + " \u2014 no markets in pool, waiting for feed", { kind: "sweep", coalesce: true });
+    const topBlocked = cands.find(c => !c.pass && !c.held);
+    if (topBlocked) {
+      const fg = topBlocked.gates.find(g => !g.pass);
+      const key = topBlocked.m.t + "|" + (fg ? fg.k : "");
+      if (fg && key !== this.lastBlockKey) {
+        this.lastBlockKey = key;
+        this.pushEvent("\u25cc", "#eab54e", "considering " + topBlocked.side + " " + topBlocked.pc + "\u00a2 \u00b7 " + topBlocked.m.t + " \u2014 blocked by " + fg.k + " (" + fg.val + ")", { kind: "consider", coalesce: true });
+      }
+    }
     for (const c of cands) {
       if (!c.pass) continue;
       if (this.log.bets.some(b => !b.result && b.title === c.m.t)) continue;
       const id = c.m.t + "@" + c.closeTs + "-" + c.side;
       if (this.log.bets.some(b => b.id === id)) continue;
+      this.pushEvent("\u271a", "#4fce7f", "ENTERED " + c.side + " @ " + c.pc + "\u00a2 \u00b7 " + c.m.t + " \u00b7 $25 to win $" + (c.contracts * (100 - c.pc) / 100).toFixed(2));
       this.log.bets.push({
         id, placedTs: now,
         title: c.m.t, ticker: c.m.ticker || "", cat: c.m.c, side: c.side, pc: c.pc,
@@ -2310,6 +2367,7 @@ class Component extends DCLogic {
         const winProb = Math.min(0.95, Math.max(0.05, b.pc / 100 + 0.03));
         b.result = roll < winProb ? "won" : "lost";
         b.settledBy = "sim";
+        this.pushEvent(b.result === "won" ? "\u2713" : "\u2717", b.result === "won" ? "#4fce7f" : "#e5636a", "SETTLED " + (b.result === "won" ? "WON " + this.fmt$(this.pnlOf(b)) : "LOST " + this.fmt$(this.pnlOf(b))) + " \u00b7 " + b.title);
         dirty = true;
       }
     });
@@ -2333,6 +2391,7 @@ class Component extends DCLogic {
         if (m && (m.result === "yes" || m.result === "no")) {
           b.result = (m.result.toUpperCase() === b.side) ? "won" : "lost";
           b.settledBy = "real";
+          this.pushEvent(b.result === "won" ? "\u2713" : "\u2717", b.result === "won" ? "#4fce7f" : "#e5636a", "SETTLED (real result) " + (b.result === "won" ? "WON " : "LOST ") + this.fmt$(this.pnlOf(b)) + " \u00b7 " + b.title);
           dirty = true;
         }
       });
@@ -2591,7 +2650,13 @@ class Component extends DCLogic {
       catBoosts,
       candCount: cands.length,
       resetLog: () => this.resetLog(),
-      buildTag: "BUILD v10",
+      buildTag: "BUILD v11",
+      events: (this.events || []).map(e => {
+        const d = new Date(e.ts);
+        const p2 = n => String(n).padStart(2, "0");
+        return { time: p2(d.getHours()) + ":" + p2(d.getMinutes()) + ":" + p2(d.getSeconds()), icon: e.icon, color: e.color, text: e.text };
+      }),
+      eventsEmpty: !(this.events && this.events.length),
       feedDiag: (this.feedDiag || ["feed check pending\u2026"]).map(l => ({ line: l })),
       dataBadge: this.customPool ? "YOUR MARKETS \u00b7 " + this.customPool.length : (this.dataMode === "live" ? "\u25cf LIVE \u00b7 " + (this.liveSource || "KALSHI") : (this.dataMode === "offline" ? "FEED OFFLINE \u2014 RETRYING" : "CONNECTING\u2026")),
       dataBadgeColor: this.customPool ? "#5aa7e8" : (this.dataMode === "live" ? "#4fce7f" : (this.dataMode === "offline" ? "#e5636a" : "#eab54e")),

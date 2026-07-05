@@ -3515,9 +3515,9 @@ class Component extends DCLogic {
         const out = {
           pvHas: pvWin.length >= 2,
           pvEmpty: pvWin.length < 2,
-          pvCashNow: "$" + curC.toFixed(2),
-          pvRiskNow: "$" + curR.toFixed(2),
-          pvTotNow: "$" + (curC + curR).toFixed(2),
+          pvCashNow: liveCash != null ? "$" + curC.toFixed(2) : "\u2014",
+          pvRiskNow: liveCash != null ? "$" + curR.toFixed(2) : "\u2014",
+          pvTotNow: liveCash != null ? "$" + (curC + curR).toFixed(2) : "\u2014",
           pvCashPoly: "", pvTotPoly: "", pvLine: "", pvStartLabel: "", pvSpanLabel: ""
         };
         if (out.pvHas) {
@@ -3589,15 +3589,13 @@ class Component extends DCLogic {
         };
       })(),
       ...(() => {
+        const conn = this.liveStatus && this.liveStatus.balance != null;
         const liveOnly = settled.filter(b => b.live).reduce((s2, b) => s2 + this.pnlOf(b), 0);
-        const shown = (this.liveStatus && this.liveStatus.balance != null) ? liveOnly : totalPnl;
-        return { totalPnl: this.fmt$(shown), pnlColor: shown >= 0 ? "#4fce7f" : "#e5636a" };
+        return { totalPnl: conn ? this.fmt$(liveOnly) : "\u2014", pnlColor: conn ? (liveOnly >= 0 ? "#4fce7f" : "#e5636a") : "#7d8697" };
       })(),
-      pnlSplit: (() => {
-        const lv = settled.filter(b => b.live).reduce((s, b) => s + this.pnlOf(b), 0);
-        const pp = totalPnl - lv;
-        return "LIVE " + this.fmt$(lv) + " \u00b7 PAPER " + this.fmt$(pp);
-      })(),
+      pnlSplit: (this.liveStatus && this.liveStatus.balance != null)
+        ? "settled live bets \u00b7 from Kalshi results"
+        : "not connected \u2014 API figures only",
       pnlPct: (totalPnl >= 0 ? "+" : "") + ((totalPnl / start) * 100).toFixed(1) + "%",
       hitRate: settled.length ? Math.round((wins.length / settled.length) * 100) + "%" : "\u2014",
       openRisk: "$" + openRisk.toFixed(2),
@@ -3679,7 +3677,7 @@ class Component extends DCLogic {
         this.setState({ rev: this.state.rev + 1 });
       },
       stopLive: () => this.disarm("manual STOP"),
-      buildTag: "BUILD v48",
+      buildTag: "BUILD v49",
       events: (this.events || []).map(e => {
         const d = new Date(e.ts);
         const p2 = n => String(n).padStart(2, "0");

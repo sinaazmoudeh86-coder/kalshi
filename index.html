@@ -1872,6 +1872,12 @@
       <div>
         <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 0 0 10px 0;">
           <div style="font-size: 12px; letter-spacing: 0.12em; color: #aab2c0; font-weight: 700;">LIVE SIGNALS · WATCHLIST</div>
+          <div style="display: flex; align-items: center; gap: 5px;">
+            <div style="font-size: 9px; letter-spacing: 0.1em; color: #7d8697;">SETTLE HORIZON</div>
+            <sc-for list="{{ horizonOpts }}" as="hz" hint-placeholder-count="4">
+              <button onClick="{{ hz.pick }}" style="background: {{ hz.bg }}; border: 1px solid {{ hz.border }}; color: {{ hz.color }}; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 3px; cursor: pointer;">{{ hz.label }}</button>
+            </sc-for>
+          </div>
           <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #7d8697;">auto-entered the moment all 6 gates pass</div>
         </div>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px;">
@@ -2150,7 +2156,7 @@ class Component extends DCLogic {
           yes, closeTs, vol, _bid: bid, _ask: ask
         };
       })
-      .filter(m => m.yes >= 5 && m.yes <= 95 && m.closeTs - nowT > 4 * 60000 && m.closeTs - nowT < 185 * 60000);
+      .filter(m => m.yes >= 5 && m.yes <= 95 && m.closeTs - nowT > 4 * 60000 && m.closeTs - nowT < (this.horizonMins() + 125) * 60000);
     // primary: real traded volume; fallback: live two-sided quotes
     let pool = mapped.filter(m => m.vol > 50);
     if (pool.length < 3) pool = mapped.filter(m => m._bid > 0 && m._ask < 100);
@@ -2174,14 +2180,14 @@ class Component extends DCLogic {
           vol: parseFloat(m.volume24hr) || 0
         };
       })
-      .filter(m => m.t && m.yes >= 5 && m.yes <= 95 && m.closeTs - nowT > 4 * 60000 && m.closeTs - nowT < 185 * 60000)
+      .filter(m => m.t && m.yes >= 5 && m.yes <= 95 && m.closeTs - nowT > 4 * 60000 && m.closeTs - nowT < (this.horizonMins() + 125) * 60000)
       .slice(0, 40);
   }
 
   async fetchLive() {
     const KBASE = "https://api.elections.kalshi.com/trade-api/v2";
     const nowS = Math.floor(Date.now() / 1000);
-    const W = "&min_close_ts=" + (nowS + 240) + "&max_close_ts=" + (nowS + 10800);
+    const W = "&min_close_ts=" + (nowS + 240) + "&max_close_ts=" + (nowS + Math.max(10800, (this.horizonMins() + 125) * 60));
     const Q1 = "/markets?limit=1000&status=open" + W;
     const Q2 = "/markets?limit=1000&status=open";
     const diag = [];
@@ -2238,16 +2244,16 @@ class Component extends DCLogic {
           if (discovered.length) { this.seriesCache = discovered; this.seriesCacheTs = Date.now(); }
           diag.push("KALSHI CATALOG: discovered " + discovered.length + " series");
         }
-        const series = Array.from(new Set(staticList.concat(discovered || []))).slice(0, 48);
+        const series = Array.from(new Set(staticList.concat(discovered || []))).slice(0, 36);
         const results = [];
-        for (let i = 0; i < series.length; i += 8) {
-          const chunk = series.slice(i, i + 8);
+        for (let i = 0; i < series.length; i += 5) {
+          const chunk = series.slice(i, i + 5);
           const rs = await Promise.all(chunk.map(s => {
             const u0 = base + "/markets?limit=100&status=open&series_ticker=" + s;
             return this.fetchJson(wrap ? wrap(u0) : u0, 12000).catch(() => null);
           }));
           results.push.apply(results, rs);
-          if (i + 8 < series.length) await new Promise(r => setTimeout(r, 350));
+          if (i + 5 < series.length) await new Promise(r => setTimeout(r, 800));
         }
         let all = [], hits = [];
         results.forEach((j, i) => {
@@ -2338,6 +2344,8 @@ class Component extends DCLogic {
     return [];
   }
 
+  horizonMins() { return this.horizon || 60; }
+
   catColor(c) {
     return { ECON: "#5aa7e8", CRYPTO: "#c792ea", COMMOD: "#eab54e", SPORTS: "#4fce7f", "M&A": "#e864a0", AI: "#57c8c0", POLITICS: "#e8875a", WEATHER: "#57c8c0", MARKET: "#8b93a3" }[c] || "#8b93a3";
   }
@@ -2394,7 +2402,7 @@ class Component extends DCLogic {
         const vol = m.vol || 0;
         const volLabel = vol >= 1000000 ? (vol / 1000000).toFixed(1) + "M" : vol >= 1000 ? Math.round(vol / 1000) + "k" : String(vol);
         const gates = [
-          { k: "T-MINUS", label: "settles in 5\u201360 min", pass: minsLeft >= 5 && minsLeft <= 60, val: Math.max(0, Math.round(minsLeft)) + "m" },
+          { k: "T-MINUS", label: "settles within " + (this.horizonMins() >= 60 ? (this.horizonMins() / 60) + "h" : this.horizonMins() + "m"), pass: minsLeft >= 5 && minsLeft <= this.horizonMins(), val: minsLeft >= 60 ? (minsLeft / 60).toFixed(1) + "h" : Math.max(0, Math.round(minsLeft)) + "m" },
           { k: "WIN ODDS", label: "price in 55\u201392\u00a2 favorite band", pass: pc >= 55 && pc <= 92, val: pc + "\u00a2" },
           { k: "LIQUIDITY", label: "24h volume \u2265 $100", pass: vol >= 100, val: "$" + volLabel },
           { k: "NET EDGE", label: "signal \u2265 +2.5\u00a2 after Kalshi fees", pass: netEdge >= 2.5, val: (netEdge >= 0 ? "+" : "") + netEdge + "\u00a2" },
@@ -2556,6 +2564,7 @@ class Component extends DCLogic {
       this.customPool = p ? JSON.parse(p) : null;
       if (this.customPool && this.customPool.some(m => !m.closeTs)) this.customPool = null;
     } catch (e) { this.customPool = null; }
+    try { this.horizon = parseInt(localStorage.getItem("kpd-horizon-v1"), 10) || 60; } catch (e) { this.horizon = 60; }
     if (!this.log || !Array.isArray(this.log.bets)) {
       this.log = { startTs: Date.now(), bets: [] };
     }
@@ -2777,6 +2786,22 @@ class Component extends DCLogic {
       hitRate: settled.length ? Math.round((wins.length / settled.length) * 100) + "%" : "\u2014",
       openRisk: "$" + openRisk.toFixed(2),
       scanStatus: openBets.length + " OPEN",
+      horizonOpts: [[60, "1H"], [240, "4H"], [720, "12H"], [1440, "24H"]].map(o => {
+        const on = this.horizonMins() === o[0];
+        return {
+          label: o[1],
+          bg: on ? "#1c2f22" : "#14181f",
+          border: on ? "#4fce7f" : "#2a303c",
+          color: on ? "#4fce7f" : "#7d8697",
+          pick: () => {
+            this.horizon = o[0];
+            try { localStorage.setItem("kpd-horizon-v1", String(o[0])); } catch (e) {}
+            clearTimeout(this.refetchT);
+            this.fetchLive();
+            this.forceUpdate();
+          }
+        };
+      }),
       scanSummary: cands.length + " positions scored \u00b7 " + qualify + " qualify \u00b7 sweeps every 5s",
       signals,
       hasBest: !!best,
@@ -2836,7 +2861,7 @@ class Component extends DCLogic {
         this.setState({ rev: this.state.rev + 1 });
       },
       stopLive: () => this.disarm("manual STOP"),
-      buildTag: "BUILD v18",
+      buildTag: "BUILD v20",
       events: (this.events || []).map(e => {
         const d = new Date(e.ts);
         const p2 = n => String(n).padStart(2, "0");

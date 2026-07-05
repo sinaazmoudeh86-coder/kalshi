@@ -1762,6 +1762,10 @@
         <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: #eab54e;">{{ pvRiskNow }}</div>
       </div>
       <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
+        <div style="font-size: 10px; letter-spacing: 0.1em; color: #c792ea;">PENDING</div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: #c792ea;" title="under review (TBD) at cost + won payouts not yet credited">{{ pvPendNow }}</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
         <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697;">TOTAL P&amp;L</div>
         <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: {{ pnlColor }};">{{ totalPnl }}</div>
         <div style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #7d8697;">{{ pnlSplit }}</div>
@@ -3525,12 +3529,18 @@ class Component extends DCLogic {
         const openCost = ((this.log && this.log.bets) || []).filter(b => !b.result).reduce((s2, b) => s2 + b.contracts * b.pc / 100, 0);
         const curC = liveCash != null ? liveCash : Math.max(0, (start + totalPnl) - openCost);
         const curR = liveCash != null ? liveRisk : openCost;
+        // pending = value Kalshi hasn't rolled into portfolio_value yet:
+        //  (a) under-review (TBD) positions at cost basis (not in the positions list anymore)
+        //  (b) bets WON on the published market result whose settlement cash isn't credited yet ($1/contract)
+        const pendPay = ((this.log && this.log.bets) || []).filter(b => b.live && b.result === "won" && b.settledBy === "real" && b.realPnl == null && (now - b.closeTs) < 24 * 3600000).reduce((s2, b) => s2 + b.contracts, 0);
+        const pending = liveCash != null ? this.reviewRiskExtra() + pendPay : 0;
         const out = {
           pvHas: pvWin.length >= 2,
           pvEmpty: pvWin.length < 2,
           pvCashNow: liveCash != null ? "$" + curC.toFixed(2) : "\u2014",
           pvRiskNow: liveCash != null ? "$" + curR.toFixed(2) : "\u2014",
-          pvTotNow: liveCash != null ? "$" + (curC + curR).toFixed(2) : "\u2014",
+          pvTotNow: liveCash != null ? "$" + (curC + curR + pending).toFixed(2) : "\u2014",
+          pvPendNow: liveCash != null ? "$" + pending.toFixed(2) : "\u2014",
           pvCashPoly: "", pvTotPoly: "", pvLine: "", pvStartLabel: "", pvSpanLabel: ""
         };
         if (out.pvHas) {
@@ -3690,7 +3700,7 @@ class Component extends DCLogic {
         this.setState({ rev: this.state.rev + 1 });
       },
       stopLive: () => this.disarm("manual STOP"),
-      buildTag: "BUILD v50",
+      buildTag: "BUILD v51",
       events: (this.events || []).map(e => {
         const d = new Date(e.ts);
         const p2 = n => String(n).padStart(2, "0");

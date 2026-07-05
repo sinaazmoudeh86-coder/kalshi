@@ -82,6 +82,21 @@ module.exports = async (req, res) => {
   }
 
   try {
+    if (req.method === "GET" && req.url && req.url.includes("action=diag")) {
+      const pem = getPem();
+      const out = {
+        keyIdLen: (process.env.KALSHI_ACCESS_KEY || "").length,
+        pemLooksValid: pem.includes("BEGIN") && pem.includes("END"),
+        hosts: {}
+      };
+      for (const base of BASES) {
+        try {
+          const r = await kalshiAt(base, "GET", "/trade-api/v2/portfolio/balance");
+          out.hosts[base] = { status: r.status, body: JSON.stringify(r.json).slice(0, 200) };
+        } catch (e) { out.hosts[base] = { status: 0, body: String((e && e.message) || e) }; }
+      }
+      return res.status(200).json(out);
+    }
     if (req.method === "GET") {
       const bal = await kalshi("GET", "/trade-api/v2/portfolio/balance");
       if (bal.status >= 200 && bal.status < 300) {

@@ -1951,7 +1951,7 @@
             <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: {{ b.color }}; border: 1px solid #232936; border-radius: 3px; padding: 2px 7px;">{{ b.name }} ×{{ b.mult }}</div>
           </sc-for>
         </div>
-        <div style="font-size: 10px; color: #5c6474; line-height: 1.5; margin-top: 12px;">{{ candCount }} positions re-scored every 5 seconds. A $25 bet fires the moment all 6 gates pass: settles in 5–60 min, 55–90¢ favorite band, 24h volume ≥ $500, model edge ≥ +2.5¢, composite score ≥ 60 (win odds × income × category form), and not already holding the market. No position caps — every qualified edge is taken.</div>
+        <div style="font-size: 10px; color: #5c6474; line-height: 1.5; margin-top: 12px;">{{ candCount }} positions re-scored every 5 seconds. A $25 bet fires the moment all 6 gates pass: settles in 5–60 min, 55–92¢ favorite band, 24h volume ≥ $500, model edge ≥ +2.5¢, composite score ≥ 60 (win odds × income × category form), and not already holding the market. No position caps — every qualified edge is taken.</div>
       </div>
 
       <!-- Category breakdown -->
@@ -2104,7 +2104,7 @@ class Component extends DCLogic {
     // primary: real traded volume; fallback: live two-sided quotes
     let pool = mapped.filter(m => m.vol > 50);
     if (pool.length < 3) pool = mapped.filter(m => m._bid > 0 && m._ask < 100);
-    return pool.sort((a, b) => b.vol - a.vol).slice(0, 40);
+    return pool.sort((a, b) => b.vol - a.vol).slice(0, 80);
   }
 
   async fetchPolymarket() {
@@ -2162,7 +2162,7 @@ class Component extends DCLogic {
       return null;
     };
     const trySeries = async (base, wrap) => {
-      const series = ["KXBTCD", "KXETHD", "KXBTC", "KXETH", "KXXRPD", "KXSOLD", "KXINX", "KXINXD", "KXINXU", "KXNASDAQ100", "KXNASDAQ100D", "KXNASDAQ100U", "KXBTCUP", "KXETHUP"];
+      const series = ["KXBTCD", "KXETHD", "KXBTC", "KXETH", "KXXRPD", "KXSOLD", "KXDOGED", "KXINX", "KXINXD", "KXINXU", "KXNASDAQ100", "KXNASDAQ100D", "KXNASDAQ100U", "KXBTCUP", "KXETHUP", "KXHIGHNY", "KXHIGHCHI", "KXHIGHLAX", "KXHIGHMIA", "KXHIGHDEN", "KXHIGHAUS", "KXHIGHPHIL", "KXMLBGAME", "KXWNBAGAME", "KXNBAGAME", "KXNHLGAME", "KXUFCFIGHT", "KXWCTOTAL", "KXWCSPREAD", "KXWCADVANCE"];
       try {
         const results = await Promise.all(series.map(s => {
           const u0 = base + "/markets?limit=100&status=open&series_ticker=" + s;
@@ -2178,9 +2178,20 @@ class Component extends DCLogic {
       } catch (e) { diag.push("KALSHI SERIES: " + (e && e.message ? e.message : "failed")); }
       return null;
     };
+    const union = (a, b) => {
+      const seen = {}; const out = [];
+      a.concat(b).forEach(m => { const k = m.ticker || m.t; if (!seen[k]) { seen[k] = 1; out.push(m); } });
+      return out;
+    };
+    const comboProxy = async () => {
+      const results = await Promise.all([trySeries("/api/kalshi"), tryKalshi("KALSHI PROXY", "/api/kalshi", Q1)]);
+      const pool = union(results[0] ? results[0].pool : [], results[1] ? results[1].pool : []).sort((x, y) => y.vol - x.vol).slice(0, 80);
+      diag.push("KALSHI MERGED: " + pool.length + " tradable in pool");
+      if (pool.length >= 1) return { pool, base: "/api/kalshi", name: "KALSHI" };
+      return null;
+    };
     const attempts = [
-      () => trySeries("/api/kalshi"),
-      () => tryKalshi("KALSHI PROXY", "/api/kalshi", Q1),
+      comboProxy,
       () => tryKalshi("KALSHI PROXY (wide)", "/api/kalshi", Q2),
       () => tryKalshi("KALSHI DIRECT", KBASE, Q1),
       () => tryKalshi("KALSHI RELAY", KBASE, Q1, u => "https://api.allorigins.win/raw?url=" + encodeURIComponent(u)),
@@ -2297,7 +2308,7 @@ class Component extends DCLogic {
         const volLabel = vol >= 1000000 ? (vol / 1000000).toFixed(1) + "M" : vol >= 1000 ? Math.round(vol / 1000) + "k" : String(vol);
         const gates = [
           { k: "T-MINUS", label: "settles in 5\u201360 min", pass: minsLeft >= 5 && minsLeft <= 60, val: Math.max(0, Math.round(minsLeft)) + "m" },
-          { k: "WIN ODDS", label: "price in 55\u201390\u00a2 favorite band", pass: pc >= 55 && pc <= 90, val: pc + "\u00a2" },
+          { k: "WIN ODDS", label: "price in 55\u201392\u00a2 favorite band", pass: pc >= 55 && pc <= 92, val: pc + "\u00a2" },
           { k: "LIQUIDITY", label: "24h volume \u2265 $500", pass: vol >= 500, val: "$" + volLabel },
           { k: "MODEL EDGE", label: "signal \u2265 +2.5\u00a2 over price", pass: edge >= 2.5, val: (edge >= 0 ? "+" : "") + edge + "\u00a2" },
           { k: "SCORE", label: "composite \u00d7 category form \u2265 60", pass: score >= 60, val: String(score) },
@@ -2465,7 +2476,7 @@ class Component extends DCLogic {
       if (seen[c.m.t]) continue;
       seen[c.m.t] = 1;
       top.push(c);
-      if (top.length >= 3) break;
+      if (top.length >= 6) break;
     }
     const signals = top.map((c, i) => {
       const heldBet = c.held ? openBets.find(b => b.title === c.m.t) : null;
@@ -2650,7 +2661,7 @@ class Component extends DCLogic {
       catBoosts,
       candCount: cands.length,
       resetLog: () => this.resetLog(),
-      buildTag: "BUILD v11",
+      buildTag: "BUILD v12",
       events: (this.events || []).map(e => {
         const d = new Date(e.ts);
         const p2 = n => String(n).padStart(2, "0");

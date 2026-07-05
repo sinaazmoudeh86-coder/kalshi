@@ -2104,7 +2104,7 @@ class Component extends DCLogic {
   tick() {
     const now = Date.now();
     if (this.liveCfg && this.liveCfg.secret && now - (this.lastBal || 0) > 60000) { this.lastBal = now; this.fetchStatus(); }
-    if (this.liveCfg && this.liveCfg.secret && now - (this.lastPf || 0) > 120000) { this.lastPf = now; this.syncPortfolio(); }
+    if (this.liveCfg && this.liveCfg.secret && now - (this.lastPf || 0) > 30000) { this.lastPf = now; this.syncPortfolio(); }
     let dirty = this.settleDue(now);
     dirty = this.scan(now) || dirty;
     if (dirty) this.save();
@@ -2573,6 +2573,13 @@ class Component extends DCLogic {
       });
       // live desk bets with NO fill 15 min after close never executed - void them (no money moved)
       this.log.bets.forEach(b => {
+        // armed desk: a bet that never became a live order is a phantom — void it
+        if (this.liveCfg && this.liveCfg.armed && !b.live && !b.imported && !b.result && b.ticker && Date.now() > (b.placedTs || 0) + 3 * 60000) {
+          b.result = "void"; b.settledBy = "real"; b.realPnl = 0;
+          this.pushEvent("\u25cb", "#7d8697", "VOIDED (never placed on Kalshi) \u00b7 " + b.title);
+          dirty = true;
+          return;
+        }
         if (b.live && !b.imported && !b.result && b.ticker && Date.now() > b.closeTs + 15 * 60000) {
           const g = groups[b.ticker + "|" + b.side];
           if (!g || !g.count) {
@@ -2582,6 +2589,26 @@ class Component extends DCLogic {
           }
         }
       });
+      // ---- position audit: OPEN in the log must mean a real position on Kalshi ----
+      const posSet = {};
+      (j.positions || []).forEach(p => {
+        const q = parseFloat(p.position != null ? p.position : (p.total_traded || 0));
+        if (p.ticker && Math.abs(q) > 0) posSet[p.ticker] = true;
+      });
+      let audited = 0;
+      this.log.bets.forEach(b => {
+        if (b.result || !b.live || !b.ticker || posSet[b.ticker]) return;
+        const g = groups[b.ticker + "|" + b.side];
+        if (Date.now() > b.closeTs + 30 * 60000) {
+          // market closed 30+ min ago, no position, no settlement record -> not real
+          b.result = "void"; b.settledBy = "real"; b.realPnl = 0; audited++; dirty = true;
+        } else if ((!g || !g.count) && Date.now() < b.closeTs && Date.now() > (b.placedTs || 0) + 10 * 60000) {
+          // mid-market, never filled, no position -> not real
+          b.result = "void"; b.settledBy = "real"; b.realPnl = 0; audited++; dirty = true;
+        }
+      });
+      this.posSet = posSet; this.posSetTs = Date.now(); this.lastPf = Date.now();
+      if (audited) this.pushEvent("\u25cb", "#7d8697", "POSITION AUDIT: voided " + audited + " open bet" + (audited > 1 ? "s" : "") + " with no matching Kalshi position");
       this.pfSynced = Date.now();
       this.kalshiPositions = (j.positions || []).length;
       if (dirty) { this.save(); this.setState({ rev: this.state.rev + 1 }); }
@@ -2611,10 +2638,28 @@ class Component extends DCLogic {
     this.setState({ rev: this.state.rev + 1 });
   }
 
+  voidBet(betId, why) {
+    const b = this.log && this.log.bets.find(x => x.id === betId);
+    if (!b || b.result) return;
+    b.result = "void"; b.settledBy = "real"; b.realPnl = 0;
+    this.pushEvent("\u25cb", "#7d8697", "VOIDED (" + why + ", no money moved) \u00b7 " + b.title);
+    this.save();
+    this.setState({ rev: this.state.rev + 1 });
+  }
+
   async placeLive(c, betId) {
     const cfg = this.liveCfg;
     if (!cfg || !cfg.armed || !c.m.ticker) return;
     if (this.livePnlToday() <= -(cfg.cap || 500)) { this.disarm("daily loss cap (-$" + (cfg.cap || 500) + ") reached"); return; }
+    // pre-flight audit: refresh the position snapshot if stale, and never re-buy a ticker we actually hold
+    if (!this.posSetTs || Date.now() - this.posSetTs > 45000) { try { await this.syncPortfolio(); } catch (e) {} }
+    if (this.posSet && this.posSet[c.m.ticker]) {
+      const held = this.log.bets.find(x => x.id === betId);
+      if (held && !held.result) { held.live = true; this.save(); }
+      this.pushEvent("\u25cb", "#5aa7e8", "AUDIT: position already on Kalshi \u2014 adopted, no re-buy \u00b7 " + c.m.t);
+      this.setState({ rev: this.state.rev + 1 });
+      return;
+    }
     const ask = c.side === "YES" ? (c.m._ask || c.pc) : (100 - (c.m._bid || (100 - c.pc)));
     const price = Math.max(1, Math.min(99, Math.round(ask)));
     const liveCount = Math.max(1, Math.floor(2500 / price)); // re-size so cost stays <= $25 at the actual limit price
@@ -2637,9 +2682,11 @@ class Component extends DCLogic {
         }
       } else {
         this.pushEvent("\u25c9", "#e5636a", "LIVE ORDER rejected (" + (j.error || r.status) + ") \u00b7 " + c.m.t);
+        this.voidBet(betId, "order rejected");
       }
     } catch (e) {
       this.pushEvent("\u25c9", "#e5636a", "LIVE ORDER failed \u00b7 " + String((e && e.message) || e));
+      this.voidBet(betId, "order failed");
     }
   }
 
@@ -2673,8 +2720,12 @@ class Component extends DCLogic {
     for (const c of cands) {
       if (!c.pass) continue;
       if (this.log.bets.some(b => !b.result && b.title === c.m.t)) continue;
-      const id = c.m.t + "@" + c.closeTs + "-" + c.side;
-      if (this.log.bets.some(b => b.id === id)) continue;
+      const idBase = c.m.t + "@" + c.closeTs + "-" + c.side;
+      const prior = this.log.bets.filter(b => b.id === idBase || (b.id && b.id.indexOf(idBase + "-r") === 0));
+      if (prior.some(b => b.result !== "void")) continue; // already open or genuinely settled
+      if (prior.length >= 3) continue;                    // 3 strikes per market, then leave it
+      const id = prior.length ? idBase + "-r" + prior.length : idBase;
+      if (prior.length) this.pushEvent("\u27f3", "#eab54e", "RETRY #" + prior.length + " \u00b7 audit confirmed not placed \u2014 re-buying \u00b7 " + c.m.t);
       this.pushEvent("\u271a", "#4fce7f", "ENTERED " + c.side + " @ " + c.pc + "\u00a2 \u00b7 " + c.m.t + " \u00b7 $25 to win $" + (c.contracts * (100 - c.pc) / 100 - c.fee).toFixed(2) + " net of fees");
       this.log.bets.push({
         id, placedTs: now,
@@ -3049,7 +3100,7 @@ class Component extends DCLogic {
         this.setState({ rev: this.state.rev + 1 });
       },
       stopLive: () => this.disarm("manual STOP"),
-      buildTag: "BUILD v23",
+      buildTag: "BUILD v27",
       events: (this.events || []).map(e => {
         const d = new Date(e.ts);
         const p2 = n => String(n).padStart(2, "0");

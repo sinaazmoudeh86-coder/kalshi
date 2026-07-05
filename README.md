@@ -1,72 +1,52 @@
-# Kalshi Desk — DEPLOYMENT (BUILD v60 · server engine)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v60 · browser model)
 
-The desk now runs **server-side 24/7** — no browser tab required. The dashboard
-is a live viewer + remote control.
+3 files + this README. The repo root must look exactly like this:
 
 ```
 index.html      <- the dashboard (header must say BUILD v60 after deploy)
-vercel.json     <- Kalshi proxy + engine cron + 60s function budget
+vercel.json     <- proxies /api/kalshi/* to Kalshi's market-data API
 api/
-  trade.js      <- signed order placement + portfolio sync
-  engine.js     <- NEW: the 24/7 trading engine (scan → gates → enter → settle → learn)
+  trade.js      <- signed order placement + portfolio sync (needs env vars)
 ```
 
 ## Deploy steps
 
-1. **Replace ALL files in the repo** with the ones in this package
-   (`index.html` at root, `trade.js` + `engine.js` inside `api/`, `vercel.json` at root).
-2. **Add KV storage** (the engine's memory — bet log, learning stats, price history):
-   Vercel dashboard → Storage → Create → **Upstash Redis** (free tier is plenty) →
-   Connect to this project. That auto-adds `KV_REST_API_URL` + `KV_REST_API_TOKEN`.
-3. Set the other env vars (below), then Redeploy.
-4. **Schedule the engine tick — every minute:**
-   - Vercel Pro: the cron in `vercel.json` handles it; set a `CRON_SECRET` env var.
-   - Vercel Hobby (crons limited to daily): use a free pinger — e.g. cron-job.org —
-     hitting `https://YOUR-SITE.vercel.app/api/engine?action=tick&secret=YOUR_TRADE_SECRET`
-     every 1 minute. That's the engine's heartbeat.
-5. Hard refresh the site (Cmd+Shift+R). Header must say **BUILD v60**, and once the
-   heartbeat is running the LIVE TRADING panel shows
-   **● SERVER ENGINE 24/7 · safe to close this tab**.
+1. **Replace ALL files in the repo** with the ones in this package.
+   The filename must be exactly `index.html` at the repo root, and `trade.js`
+   inside a folder named `api`.
+2. Vercel auto-deploys on commit. Wait for "Ready".
+3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
+4. Check the header — it must say **BUILD v60**.
 
 ## Environment variables (Vercel → Settings → Environment Variables)
 
 | Name | Value |
 |---|---|
-| `TRADE_SECRET` | passphrase you invent — typed when arming, used by the pinger |
-| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | auto-added when you connect Upstash Redis |
-| `KALSHI_ACCESS_KEY` | your Kalshi API key ID (only needed for LIVE orders) |
+| `KALSHI_ACCESS_KEY` | your Kalshi API key ID (read/write key) |
 | `KALSHI_PRIVATE_KEY` | the key file, base64: `base64 -i key.pem \| tr -d '\n' \| pbcopy` |
-| `CRON_SECRET` | (Pro cron only) any string — Vercel sends it with cron requests |
+| `TRADE_SECRET` | passphrase you invent — typed when arming |
 | `TRADING_HALTED` | (optional) set to `true` as a remote kill switch |
 
 Env changes require a Redeploy (Deployments → ⋯ → Redeploy).
 
-## How server mode works
-
-- The engine tick (`/api/engine?action=tick`) runs one full sweep: refresh market
-  pool → update price history → settle due bets (real Kalshi results; sim only for
-  pasted paper markets) → learning module → 8 gates → enter qualifying bets →
-  place/audit live orders. State persists in KV between ticks.
-- The dashboard polls engine state every 20s. When the heartbeat is fresh (<5 min)
-  it hands the loop to the server: no local betting, ARM/STOP/RESET are routed to
-  the engine, and the log/events you see ARE the server's.
-- If the engine is unreachable (not deployed, KV missing, pinger down), the
-  dashboard falls back to the old browser-side loop automatically and says so.
-- ARM once from the dashboard (enter TRADE_SECRET). The armed flag lives in KV,
-  so the engine keeps trading live after you close the tab. STOP LIVE disarms
-  server-side instantly.
-
-## Desk rules (unchanged, now enforced server-side)
-
-- $25 limit orders, all 8 gates, max 4 open bets, 3 strikes per market.
-- SPORTS: 18h watchlist, entries only T−6h → T−45m, 80–94¢ favorites, spread ≤ 4¢,
-  no sharp odds moves, $1k+ volume, max 2 held.
-- Learning module: calibration extra edge, category/band adjust, 2h category
-  cooldown after 3 straight losses, 1h circuit breaker after 5.
-- Loser log with full at-entry gate snapshots (server entries tagged `srv`).
-- Safety: −$500/day auto-halt, $30/order cap, balance ≥ $26, sync-before-trade,
-  `TRADING_HALTED=true` kills orders, STOP LIVE disarms.
+## Using it
 
 - Site password: `20042004`
+- ARM: LIVE TRADING panel → ARM → enter your TRADE_SECRET.
+  Balance appearing = the whole chain works.
+- Armed: every signal clearing all 8 gates places a real $25 limit order.
+  Resting orders are re-audited every sweep and canceled if the thesis breaks,
+  the price runs away, or 10 min pass unfilled.
+- Log reconciles against real Kalshi fills, settlements & positions every 30s.
+- SPORTS (new): 18h watchlist, entries only T−6h → T−45m, 80–94¢ heavy favorites,
+  spread ≤ 4¢, no sharp odds moves, $1k+ 24h volume, max 2 held at once.
+- LOSER LOG (new): every loss keeps a snapshot of all 8 gate values at the
+  betting moment; COPY exports the full report for review.
+- Learning module: calibration extra edge, category/band adjust, 2h cooldown
+  after 3 straight category losses, 1h circuit breaker after 5 straight.
+- Safety: −$500/day auto-halt, $30/order server cap, ■ STOP LIVE disarms
+  instantly, `TRADING_HALTED=true` kills orders server-side.
+- **The desk only scans/trades while a browser tab is open.** Keep the tab open
+  (it takes a screen wake-lock while armed).
 
 Not financial advice. The edge is unproven — treat every session as an experiment.

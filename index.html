@@ -1754,15 +1754,15 @@
         <div style="font-family: 'IBM Plex Mono', monospace; font-size: 27px; font-weight: 600; color: #4fce7f; line-height: 1.1;">{{ pvTotNow }}</div>
       </div>
       <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
-        <div style="font-size: 10px; letter-spacing: 0.1em; color: #5aa7e8;">TOTAL CASH</div>
+        <div style="font-size: 10px; letter-spacing: 0.1em; color: #5aa7e8;">CASH · UNUSED</div>
         <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: #5aa7e8;">{{ pvCashNow }}</div>
       </div>
       <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
-        <div style="font-size: 10px; letter-spacing: 0.1em; color: #eab54e;">IN BETS</div>
+        <div style="font-size: 10px; letter-spacing: 0.1em; color: #eab54e;">PORTFOLIO · BETS</div>
         <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: #eab54e;">{{ pvRiskNow }}</div>
       </div>
       <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
-        <div style="font-size: 10px; letter-spacing: 0.1em; color: #c792ea;">PENDING</div>
+        <div style="font-size: 10px; letter-spacing: 0.1em; color: #c792ea;">UNDER REVIEW</div>
         <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: #c792ea;" title="under review (TBD) at cost + won payouts not yet credited">{{ pvPendNow }}</div>
       </div>
       <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
@@ -1952,7 +1952,7 @@
             <div style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600; color: #5aa7e8;">{{ pvCashNow }}</div>
           </div>
           <div style="display: flex; flex-direction: column; gap: 2px;">
-            <div style="font-size: 9px; letter-spacing: 0.08em; color: #eab54e;">IN BETS</div>
+            <div style="font-size: 9px; letter-spacing: 0.08em; color: #eab54e;">PORTFOLIO · BETS</div>
             <div style="font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600; color: #eab54e;">{{ pvRiskNow }}</div>
           </div>
         </div>
@@ -2858,6 +2858,7 @@ class Component extends DCLogic {
         const q = this.fpCount(p, "position_fp", "position");
         if (p.ticker && Math.abs(q) > 0) posSet[p.ticker] = Math.abs(q);
       });
+      this.pfOkTs = Date.now(); // positions verified — barrier can clear even if later steps hiccup
       // import ANY Kalshi position missing from the log (positions are ground truth, no age limit)
       (j.positions || []).forEach(p => {
         const q = this.fpCount(p, "position_fp", "position");
@@ -2904,9 +2905,11 @@ class Component extends DCLogic {
         }
       } catch (e) {}
       // reconciliation report: Kalshi count vs desk count
-      const kOpen = Object.keys(posSet).length;
-      const dOpen = this.log.bets.filter(b => b.live && !b.result && b.ticker).length;
-      if (kOpen !== dOpen) this.pushEvent("\u25cb", "#eab54e", "POSITION AUDIT: Kalshi reports " + kOpen + " open, desk shows " + dOpen + " \u2014 reconciling", { kind: "posaudit", coalesce: true });
+      // a Kalshi position is only a problem if the desk has NO record of its ticker at all
+      // (settled-awaiting-payout positions legitimately linger on Kalshi's side)
+      const unaccounted = Object.keys(posSet).filter(t => !this.log.bets.some(b => b.ticker === t));
+      this.unaccounted = unaccounted.length;
+      if (unaccounted.length) this.pushEvent("\u25cb", "#eab54e", "POSITION AUDIT: " + unaccounted.length + " Kalshi position(s) unknown to the desk \u2014 importing", { kind: "posaudit", coalesce: true });
       let audited = 0;
       this.log.bets.forEach(b => {
         if (!b.result && b.live && b.ticker && posSet[b.ticker] && (b.fillState === "resting" || b.fillState === "partial")) {
@@ -2952,7 +2955,7 @@ class Component extends DCLogic {
   recordSample() {
     const cash = this.liveStatus && this.liveStatus.balance != null ? this.liveStatus.balance / 100 : null;
     if (cash == null) return;
-    let atRisk = (this.liveStatus && this.liveStatus.portfolio_value != null && this.liveStatus.balance != null) ? Math.max(0, (this.liveStatus.portfolio_value - this.liveStatus.balance) / 100) : this.atRisk;
+    let atRisk = this.atRisk != null ? this.atRisk : ((this.liveStatus && this.liveStatus.portfolio_value != null && this.liveStatus.balance != null) ? Math.max(0, (this.liveStatus.portfolio_value - this.liveStatus.balance) / 100) : null);
     if (atRisk == null) atRisk = ((this.log && this.log.bets) || []).filter(b => b.live && !b.result).reduce((s, b) => s + b.contracts * b.pc / 100, 0);
     else atRisk += this.reviewRiskExtra();
     this.pv = this.pv || this.loadPv();
@@ -2970,6 +2973,11 @@ class Component extends DCLogic {
       this.liveStatus = await r.json();
       this.liveStatus._httpOk = r.ok;
       if (this.liveStatus && this.liveStatus.balance == null && this.liveStatus.balance_dollars != null) this.liveStatus.balance = Math.round(parseFloat(this.liveStatus.balance_dollars) * 100);
+      // calibrate portfolio_value semantics once, when there is real position exposure to compare against
+      if (this.liveStatus && this.liveStatus.portfolio_value != null && this.liveStatus.balance != null && this.atRisk != null && this.atRisk > 1 && this.pvIncludesCash == null) {
+        const pv = this.liveStatus.portfolio_value / 100, cash = this.liveStatus.balance / 100, e = this.atRisk;
+        this.pvIncludesCash = Math.abs(pv - (cash + e)) <= Math.abs(pv - e);
+      }
       if (r.ok && this.liveStatus && this.liveStatus.balance != null && !this.liveStatus.srv) this.srvOld = true;
       this.recordSample();
     } catch (e) { this.liveStatus = { error: String(e) }; }
@@ -3012,9 +3020,11 @@ class Component extends DCLogic {
     if (!this.liveCfg || !this.liveCfg.armed) return true; // paper entries unaffected
     const n = now || Date.now();
     if (!this.bootTs) this.bootTs = n;
-    if (n - this.bootTs < 45000) return false;
-    if (!this.pfOkTs || n - this.pfOkTs > 90000) return false;
-    if (!this.liveStatus || this.liveStatus.balance == null) return false;
+    if (n - this.bootTs < 20000) { this.holdReason = "warming up " + Math.ceil((20000 - (n - this.bootTs)) / 1000) + "s"; return false; }
+    if (!this.pfOkTs) { this.holdReason = "first position sync not completed"; return false; }
+    if (n - this.pfOkTs > 120000) { this.holdReason = "position sync stale (" + Math.round((n - this.pfOkTs) / 1000) + "s) \u2014 check ACCOUNT SYNC errors"; return false; }
+    if (!this.liveStatus || this.liveStatus.balance == null) { this.holdReason = "balance not fetched yet"; return false; }
+    this.holdReason = null;
     return true;
   }
 
@@ -3174,7 +3184,7 @@ class Component extends DCLogic {
       if (!c.pass) continue;
       if (this.log.bets.some(b => !b.result && b.title === c.m.t)) continue;
       if (this.liveCfg && this.liveCfg.armed && !this.tradeReady(now)) {
-        this.pushEvent("\u25cb", "#eab54e", "entries held \u2014 verifying Kalshi positions + balance before any buy decision", { kind: "hold", coalesce: true });
+        this.pushEvent("\u25cb", "#eab54e", "entries held \u2014 " + (this.holdReason || "verifying account state"), { kind: "hold", coalesce: true });
         break;
       }
       if (this.log.bets.filter(b2 => !b2.result).length >= 4) {
@@ -3522,7 +3532,11 @@ class Component extends DCLogic {
         const pvWin = this.pv.filter(p => p.ts >= now - 24 * 3600000);
         const liveCash = this.liveStatus && this.liveStatus.balance != null ? this.liveStatus.balance / 100 : null;
         const pvKk = (this.liveStatus && this.liveStatus.portfolio_value != null && liveCash != null) ? Math.max(0, this.liveStatus.portfolio_value / 100 - liveCash) : null;
-        const liveRisk = pvKk != null ? pvKk : (this.atRisk != null ? (this.atRisk + this.reviewRiskExtra()) : ((this.log && this.log.bets) || []).filter(b => b.live && !b.result).reduce((s, b) => s + b.contracts * b.pc / 100, 0));
+        // STRICT MODE: cash and portfolio_value come from ONE atomic Kalshi ledger response.
+        // BETS is their difference - computed inside that single response, immune to timing skew.
+        const pvRaw = this.liveStatus && this.liveStatus.portfolio_value != null ? this.liveStatus.portfolio_value / 100 : null;
+        const pvTotal = pvRaw != null && liveCash != null ? (this.pvIncludesCash === false ? pvRaw + liveCash : pvRaw) : null;
+        const liveRisk = pvTotal != null ? Math.max(0, pvTotal - liveCash) : (this.atRisk != null ? this.atRisk : ((this.log && this.log.bets) || []).filter(b => b.live && !b.result).reduce((s, b) => s + b.contracts * b.pc / 100, 0));
         const lastS = pvWin[pvWin.length - 1];
         // disconnected/paper fallback must reconcile with the log: value = bankroll,
         // in-bets = open cost, cash = bankroll - open cost
@@ -3539,8 +3553,8 @@ class Component extends DCLogic {
           pvEmpty: pvWin.length < 2,
           pvCashNow: liveCash != null ? "$" + curC.toFixed(2) : "\u2014",
           pvRiskNow: liveCash != null ? "$" + curR.toFixed(2) : "\u2014",
-          pvTotNow: liveCash != null ? "$" + (curC + curR + pending).toFixed(2) : "\u2014",
-          pvPendNow: liveCash != null ? "$" + pending.toFixed(2) : "\u2014",
+          pvTotNow: liveCash != null ? "$" + (curC + curR).toFixed(2) : "\u2014",
+          pvPendNow: liveCash != null ? ("$" + pending.toFixed(2) + (pending > 0 ? " est." : "")) : "\u2014",
           pvCashPoly: "", pvTotPoly: "", pvLine: "", pvStartLabel: "", pvSpanLabel: ""
         };
         if (out.pvHas) {
@@ -3596,9 +3610,9 @@ class Component extends DCLogic {
           syncAgoColor: ago != null && ago < 90 ? "#4fce7f" : "#eab54e",
           syncK: kOpen == null ? "\u2014" : String(kOpen),
           syncD: String(dOpen),
-          syncMatch: kOpen == null ? "NOT CONNECTED" : (kOpen === dOpen ? "IN SYNC" : "MISMATCH"),
-          syncMatchColor: kOpen == null ? "#7d8697" : (kOpen === dOpen ? "#4fce7f" : "#e5636a"),
-          syncMatchBg: kOpen == null ? "#1d222c" : (kOpen === dOpen ? "#12281c" : "#2c1518"),
+          syncMatch: kOpen == null ? "NOT CONNECTED" : ((this.unaccounted || 0) === 0 ? "IN SYNC" : "MISMATCH"),
+          syncMatchColor: kOpen == null ? "#7d8697" : ((this.unaccounted || 0) === 0 ? "#4fce7f" : "#e5636a"),
+          syncMatchBg: kOpen == null ? "#1d222c" : ((this.unaccounted || 0) === 0 ? "#12281c" : "#2c1518"),
           syncFills: st.fills != null ? String(st.fills) : "\u2014",
           syncSetts: st.setts != null ? String(st.setts) : "\u2014",
           syncErr: this.srvOld ? "api/trade.js on the server is OUTDATED \u2014 replace it in the repo and redeploy. Sync, cancel and audit are paused until then." : ((st.errors && st.errors.length) ? "endpoint errors: " + st.errors.join(", ") : ""),
@@ -3700,7 +3714,7 @@ class Component extends DCLogic {
         this.setState({ rev: this.state.rev + 1 });
       },
       stopLive: () => this.disarm("manual STOP"),
-      buildTag: "BUILD v51",
+      buildTag: "BUILD v54",
       events: (this.events || []).map(e => {
         const d = new Date(e.ts);
         const p2 = n => String(n).padStart(2, "0");

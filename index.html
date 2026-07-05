@@ -2534,6 +2534,27 @@ class Component extends DCLogic {
       c.n += wt; c.w += (b.result === "won" ? wt : 0); c.exp += wt * expOf(b);
       c.rn++; c.rw += b.result === "won" ? 1 : 0;
     });
+    const bandOf = pc2 => pc2 >= 86 ? "86\u00a2+" : pc2 >= 80 ? "80\u201385\u00a2" : pc2 >= 70 ? "70\u201379\u00a2" : "<70\u00a2";
+    const bandStats = {};
+    bets.forEach(b => {
+      const wt = wOf(b);
+      const k = bandOf(b.pc);
+      const c = bandStats[k] = bandStats[k] || { n: 0, w: 0, exp: 0, rn: 0, rw: 0 };
+      c.n += wt; c.w += (b.result === "won" ? wt : 0); c.exp += wt * expOf(b);
+      c.rn++; c.rw += b.result === "won" ? 1 : 0;
+    });
+    const bandAdj = {};
+    Object.keys(bandStats).forEach(k => {
+      const c = bandStats[k];
+      const expRate = c.exp / c.n;
+      const adjRate = (c.w + 2 * expRate) / (c.n + 2);
+      const short = Math.max(0, expRate - adjRate);
+      bandAdj[k] = {
+        extra: Math.round(Math.min(4, short * 100 * (c.n / (c.n + 8))) * 10) / 10,
+        mult: Math.max(0.6, Math.min(1.25, adjRate / Math.max(expRate, 0.05))),
+        rec: c.rw + "\u2013" + (c.rn - c.rw)
+      };
+    });
     const catAdj = {};
     Object.keys(cat).forEach(k => {
       const c = cat[k];
@@ -2576,11 +2597,15 @@ class Component extends DCLogic {
         const a = catAdj[k];
         lines.push({ text: k + ": " + a.rec + " \u00b7 form \u00d7" + a.mult.toFixed(2) + (a.extra > 0 ? " \u00b7 +" + a.extra + "\u00a2 extra edge required" : ""), color: a.mult >= 1 ? "#4fce7f" : "#e8875a" });
       });
+      Object.keys(bandAdj).sort().forEach(k => {
+        const a = bandAdj[k];
+        lines.push({ text: "BAND " + k + ": " + a.rec + " \u00b7 \u00d7" + a.mult.toFixed(2) + (a.extra > 0 ? " \u00b7 +" + a.extra + "\u00a2 extra edge required" : ""), color: a.mult >= 1 ? "#4fce7f" : "#e8875a" });
+      });
       Object.keys(blocked).forEach(k => lines.push({ text: "COOLDOWN: " + k + " blocked " + remM(blocked[k]) + " after 3 straight losses", color: "#e5636a" }));
       if (haltUntil) lines.push({ text: "CIRCUIT BREAKER: all entries paused " + remM(haltUntil) + " after 5 straight losses", color: "#e5636a" });
     }
     this._lm = { calib, catAdj, blocked, haltUntil, lines,
-      reqEdge: c => Math.round((2.5 + calib + ((catAdj[c] && catAdj[c].extra) || 0)) * 10) / 10 };
+      reqEdge: (c, pc2) => Math.round((2.5 + calib + ((catAdj[c] && catAdj[c].extra) || 0) + ((pc2 != null && bandAdj[bandOf(pc2)] && bandAdj[bandOf(pc2)].extra) || 0)) * 10) / 10 };
     this._lmTs = now;
     return this._lm;
   }
@@ -2680,21 +2705,23 @@ class Component extends DCLogic {
         const edgeNorm = Math.min(Math.max((netEdge - 2.5) / 4, 0), 1);
         const score = Math.round((winProb * 0.55 + evNorm * 0.30 + edgeNorm * 0.15) * boost * 100);
         const dl = this.domainLogic(m, side, pc, minsLeft, now);
-        const reqE = Math.max(1.5, Math.round((L.reqEdge(m.c) + (dl.extra || 0)) * 10) / 10);
+        const reqE = Math.max(1.5, Math.round((L.reqEdge(m.c, pc) + (dl.extra || 0)) * 10) / 10);
+        const etH = (new Date(now).getUTCHours() + 20) % 24;
+        const volReq = etH >= 2 && etH < 7 ? 500 : 100; // thin books overnight ET
         const dupe = openBets.some(b => b.title === m.t);
         const vol = m.vol || 0;
         const volLabel = vol >= 1000000 ? (vol / 1000000).toFixed(1) + "M" : vol >= 1000 ? Math.round(vol / 1000) + "k" : String(vol);
         const gates = [
           { k: "T-MINUS", label: "settles within " + (this.horizonMins() >= 60 ? (this.horizonMins() / 60) + "h" : this.horizonMins() + "m"), pass: minsLeft >= 5 && minsLeft <= this.horizonMins(), val: minsLeft >= 60 ? (minsLeft / 60).toFixed(1) + "h" : Math.max(0, Math.round(minsLeft)) + "m" },
-          { k: "WIN ODDS", label: "price in 70\u2013" + (dl.bandMax || 92) + "\u00a2 high-probability band", pass: pc >= 70 && pc <= (dl.bandMax || 92), val: pc + "\u00a2" },
-          { k: "LIQUIDITY", label: "24h volume \u2265 $100", pass: vol >= 100, val: "$" + volLabel },
+          { k: "WIN ODDS", label: "price in 70\u2013" + (dl.bandMax || 85) + "\u00a2 high-probability band (fee-viable)", pass: pc >= 70 && pc <= (dl.bandMax || 85), val: pc + "\u00a2" },
+          { k: "LIQUIDITY", label: "24h volume \u2265 $" + volReq + (volReq > 100 ? " (quiet hours)" : ""), pass: vol >= volReq, val: "$" + volLabel },
           { k: "NET EDGE", label: "signal \u2265 +" + reqE + "\u00a2 net of fees (learned + domain)", pass: netEdge >= reqE, val: (netEdge >= 0 ? "+" : "") + netEdge + "\u00a2" },
           { k: "SCORE", label: "composite \u00d7 category form \u2265 60", pass: score >= 60, val: String(score) },
           { k: "DUPLICATE", label: "not already holding this market", pass: !dupe, val: dupe ? "held" : "clear" },
           { k: "DOMAIN", label: dl.label, pass: dl.ok, val: dl.val },
           { k: "LEARNING", label: "no loss-streak cooldown active", pass: !L.blocked[m.c] && !L.haltUntil, val: L.haltUntil ? "halted " + Math.max(1, Math.ceil((L.haltUntil - now) / 60000)) + "m" : (L.blocked[m.c] ? "cooldown " + Math.max(1, Math.ceil((L.blocked[m.c] - now) / 60000)) + "m" : "clear") }
         ];
-        cands.push({ m, idx, side, pc, contracts, winProb, edge, netEdge, fee, score, closeTs, minsLeft, gates, dl, pass: gates.every(g => g.pass), held: dupe });
+        cands.push({ m, idx, side, pc, contracts, winProb, edge, netEdge, fee, score, closeTs, minsLeft, gates, dl, be: Math.round(pc + feeC), pass: gates.every(g => g.pass), held: dupe });
       });
     });
     cands.sort((a, b) => (b.held ? 1 : 0) - (a.held ? 1 : 0) || b.score - a.score);
@@ -2908,7 +2935,7 @@ class Component extends DCLogic {
   recordSample() {
     const cash = this.liveStatus && this.liveStatus.balance != null ? this.liveStatus.balance / 100 : null;
     if (cash == null) return;
-    let atRisk = this.atRisk;
+    let atRisk = (this.liveStatus && this.liveStatus.portfolio_value != null && this.liveStatus.balance != null) ? Math.max(0, (this.liveStatus.portfolio_value - this.liveStatus.balance) / 100) : this.atRisk;
     if (atRisk == null) atRisk = ((this.log && this.log.bets) || []).filter(b => b.live && !b.result).reduce((s, b) => s + b.contracts * b.pc / 100, 0);
     else atRisk += this.reviewRiskExtra();
     this.pv = this.pv || this.loadPv();
@@ -2925,6 +2952,7 @@ class Component extends DCLogic {
       const r = await fetch("/api/trade?action=status", { headers: { "x-trade-secret": this.liveCfg.secret } });
       this.liveStatus = await r.json();
       this.liveStatus._httpOk = r.ok;
+      if (this.liveStatus && this.liveStatus.balance == null && this.liveStatus.balance_dollars != null) this.liveStatus.balance = Math.round(parseFloat(this.liveStatus.balance_dollars) * 100);
       if (r.ok && this.liveStatus && this.liveStatus.balance != null && !this.liveStatus.srv) this.srvOld = true;
       this.recordSample();
     } catch (e) { this.liveStatus = { error: String(e) }; }
@@ -3037,7 +3065,6 @@ class Component extends DCLogic {
   async placeLive(c, betId) {
     const cfg = this.liveCfg;
     if (!cfg || !cfg.armed || !c.m.ticker) return;
-    if (this.livePnlToday() <= -(cfg.cap || 500)) { this.disarm("daily loss cap (-$" + (cfg.cap || 500) + ") reached"); return; }
     if (this.liveStatus && this.liveStatus.balance != null && this.liveStatus.balance < 2600) {
       this.pushEvent("\u25cb", "#eab54e", "balance under $26 \u2014 order skipped", { kind: "lowbal", coalesce: true });
       return;
@@ -3062,14 +3089,17 @@ class Component extends DCLogic {
       this.setState({ rev: this.state.rev + 1 });
       return;
     }
+    // fast markets take the ask (fill certainty); slower ones rest a maker order at bid+1c (saves the spread)
+    const slow = (c.closeTs - Date.now()) > 45 * 60000;
     const ask = c.side === "YES" ? (c.m._ask || c.pc) : (100 - (c.m._bid || (100 - c.pc)));
-    const price = Math.max(1, Math.min(99, Math.round(ask)));
+    const sideBid = c.side === "YES" ? (c.m._bid || (c.pc - 2)) : (100 - (c.m._ask || (100 - c.pc + 2)));
+    const price = Math.max(1, Math.min(99, Math.round(slow ? sideBid + 1 : ask)));
     const liveCount = Math.max(1, Math.floor(2500 / price)); // re-size so cost stays <= $25 at the actual limit price
     try {
       const r = await fetch("/api/trade", {
         method: "POST",
         headers: { "content-type": "application/json", "x-trade-secret": cfg.secret },
-        body: JSON.stringify({ ticker: c.m.ticker, side: c.side.toLowerCase(), count: liveCount, price })
+        body: JSON.stringify({ ticker: c.m.ticker, side: c.side.toLowerCase(), count: liveCount, price, post_only: slow })
       });
       const j = await r.json().catch(() => ({}));
       if (r.ok && j.order) {
@@ -3128,6 +3158,10 @@ class Component extends DCLogic {
       if (this.log.bets.some(b => !b.result && b.title === c.m.t)) continue;
       if (this.liveCfg && this.liveCfg.armed && !this.tradeReady(now)) {
         this.pushEvent("\u25cb", "#eab54e", "entries held \u2014 verifying Kalshi positions + balance before any buy decision", { kind: "hold", coalesce: true });
+        break;
+      }
+      if (this.log.bets.filter(b2 => !b2.result).length >= 4) {
+        this.pushEvent("\u25cb", "#eab54e", "max 4 concurrent open bets \u2014 holding new entries until one settles", { kind: "maxopen", coalesce: true });
         break;
       }
       const idBase = c.m.t + "@" + c.closeTs + "-" + c.side;
@@ -3309,7 +3343,13 @@ class Component extends DCLogic {
           clearTimeout(this.copyT);
           this.copyT = setTimeout(() => this.setState({ copiedId: null }), 1500);
         },
-        gates: c.gates.map(g => ({ k: g.k, label: g.label, val: g.val, icon: g.pass ? "\u2713" : "\u2717", color: g.pass ? "#4fce7f" : "#e5636a" }))
+        gates: c.gates.map(g => ({ k: g.k, label: g.label, val: g.val, icon: g.pass ? "\u2713" : "\u2717", color: g.pass ? "#4fce7f" : "#e5636a" })).concat([{
+          k: "BREAKEVEN",
+          label: "needs " + c.be + "% win rate to profit \u00b7 market implies " + Math.round(c.winProb * 100) + "%",
+          val: c.be + "%",
+          icon: Math.round(c.winProb * 100) >= c.be ? "\u2713" : "\u2717",
+          color: Math.round(c.winProb * 100) >= c.be ? "#4fce7f" : "#e5636a"
+        }])
       };
     });
 
@@ -3464,7 +3504,8 @@ class Component extends DCLogic {
         this.pv = this.pv || this.loadPv();
         const pvWin = this.pv.filter(p => p.ts >= now - 24 * 3600000);
         const liveCash = this.liveStatus && this.liveStatus.balance != null ? this.liveStatus.balance / 100 : null;
-        const liveRisk = this.atRisk != null ? (this.atRisk + this.reviewRiskExtra()) : ((this.log && this.log.bets) || []).filter(b => b.live && !b.result).reduce((s, b) => s + b.contracts * b.pc / 100, 0);
+        const pvKk = (this.liveStatus && this.liveStatus.portfolio_value != null && liveCash != null) ? Math.max(0, this.liveStatus.portfolio_value / 100 - liveCash) : null;
+        const liveRisk = pvKk != null ? pvKk : (this.atRisk != null ? (this.atRisk + this.reviewRiskExtra()) : ((this.log && this.log.bets) || []).filter(b => b.live && !b.result).reduce((s, b) => s + b.contracts * b.pc / 100, 0));
         const lastS = pvWin[pvWin.length - 1];
         const curC = liveCash != null ? liveCash : (lastS ? lastS.c : (start + totalPnl));
         const curR = liveCash != null ? liveRisk : (lastS ? lastS.r : 0);
@@ -3544,13 +3585,16 @@ class Component extends DCLogic {
           }
         };
       })(),
-      totalPnl: this.fmt$(totalPnl),
+      ...(() => {
+        const liveOnly = settled.filter(b => b.live).reduce((s2, b) => s2 + this.pnlOf(b), 0);
+        const shown = (this.liveStatus && this.liveStatus.balance != null) ? liveOnly : totalPnl;
+        return { totalPnl: this.fmt$(shown), pnlColor: shown >= 0 ? "#4fce7f" : "#e5636a" };
+      })(),
       pnlSplit: (() => {
         const lv = settled.filter(b => b.live).reduce((s, b) => s + this.pnlOf(b), 0);
         const pp = totalPnl - lv;
         return "LIVE " + this.fmt$(lv) + " \u00b7 PAPER " + this.fmt$(pp);
       })(),
-      pnlColor: totalPnl >= 0 ? "#4fce7f" : "#e5636a",
       pnlPct: (totalPnl >= 0 ? "+" : "") + ((totalPnl / start) * 100).toFixed(1) + "%",
       hitRate: settled.length ? Math.round((wins.length / settled.length) * 100) + "%" : "\u2014",
       openRisk: "$" + openRisk.toFixed(2),
@@ -3632,7 +3676,7 @@ class Component extends DCLogic {
         this.setState({ rev: this.state.rev + 1 });
       },
       stopLive: () => this.disarm("manual STOP"),
-      buildTag: "BUILD v47",
+      buildTag: "BUILD v48",
       events: (this.events || []).map(e => {
         const d = new Date(e.ts);
         const p2 = n => String(n).padStart(2, "0");

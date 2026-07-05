@@ -105,7 +105,7 @@ module.exports = async (req, res) => {
         side: "bid", count: "1.00", price: "0.0100",
         time_in_force: "good_till_canceled",
         self_trade_prevention_type: "taker_at_cross",
-        post_only: false, cancel_order_on_pause: false, reduce_only: false
+        post_only: !!b.post_only, cancel_order_on_pause: false, reduce_only: false
       };
       const out = {};
       for (const base of BASES) {
@@ -137,13 +137,19 @@ module.exports = async (req, res) => {
       return res.status(200).json({
         fills: f.list, settlements: s.list, positions: p.list,
         errors: [f.err, s.err, p.err].filter(Boolean),
-        srv: 39
+        srv: 48
       });
     }
     if (req.method === "GET") {
       const bal = await kalshi("GET", "/trade-api/v2/portfolio/balance");
       if (bal.status >= 200 && bal.status < 300) {
-        return res.status(200).json({ balance: bal.json && bal.json.balance, via: bal.base, srv: 39 });
+        const bj = bal.json || {};
+        const cents = (v, d) => v != null ? Math.round(parseFloat(v)) : (d != null ? Math.round(parseFloat(d) * 100) : null);
+        return res.status(200).json({
+          balance: cents(bj.balance, bj.balance_dollars),
+          portfolio_value: cents(bj.portfolio_value, bj.portfolio_value_dollars),
+          via: bal.base, srv: 48
+        });
       }
       const msg = (bal.json && ((bal.json.error && bal.json.error.message) || bal.json.message || bal.json.error)) || ("kalshi " + bal.status);
       return res.status(502).json({ error: String(msg), via: bal.base });
@@ -178,7 +184,7 @@ module.exports = async (req, res) => {
         price: (yesPrice / 100).toFixed(4),
         time_in_force: "good_till_canceled",
         self_trade_prevention_type: "taker_at_cross",
-        post_only: false,
+        post_only: !!b.post_only,
         cancel_order_on_pause: false,
         reduce_only: false
       };

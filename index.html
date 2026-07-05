@@ -2280,7 +2280,7 @@ class Component extends DCLogic {
     const mapped = (j.markets || [])
       .filter(m => !m.status || m.status === "active")
       .filter(m => !m.mve_collection_ticker && !(m.ticker || "").includes("KXMVE") && !(m.event_ticker || "").includes("KXMVE"))
-      .filter(m => !/KXHIGH|KXLOW/i.test(m.ticker || "")) // weather disabled by desk policy
+      .filter(m => !/KXHIGH|KXLOW|KXTEMP/i.test(m.ticker || "")) // weather disabled by desk policy
       .map(m => {
         const bid = cents(m.yes_bid, m.yes_bid_dollars);
         const ask = cents(m.yes_ask, m.yes_ask_dollars) || 100;
@@ -2641,7 +2641,7 @@ class Component extends DCLogic {
       extra += Math.min(2, (minsLeft / 60) * (range / 12)); // exposure-time tax in unstable regimes
       return { ok: true, extra: Math.round(extra * 10) / 10, label: "crypto 0DTE: ITM favorite + stable tape wins by time decay", val: "\u00b1" + Math.round(range) + "\u00a2 " + (sideDrift >= 0 ? "+" : "") + sideDrift + "\u00a2", note: notes.join("; ") };
     }
-    if (/KXHIGH|KXLOW|HIGH TEMP|LOW TEMP/.test(tk)) {
+    if (/KXHIGH|KXLOW|KXTEMP|HIGH TEMP|LOW TEMP/.test(tk)) {
       return { ok: false, extra: 0, label: "weather markets disabled \u2014 desk trades high-probability fast markets only", val: "off" };
     }
     return { ok: true, extra: 0, label: "no domain model for this market family", val: "n/a" };
@@ -2733,7 +2733,7 @@ class Component extends DCLogic {
   // FIRST and fall back to legacy names so both API generations parse correctly.
   // weather markets settle on the next-morning NWS Climate Report (~6-9am local),
   // NOT at market close - give them ~20h of settlement patience before any void
-  isWeatherBet(t) { return /KXHIGH|KXLOW/i.test(t || ""); }
+  isWeatherBet(t) { return /KXHIGH|KXLOW|KXTEMP/i.test(t || ""); }
   settleGraceMs(b) { return this.isWeatherBet(b.ticker) ? 20 * 3600000 : 30 * 60000; }
 
   fpNum(v) { const n = parseFloat(v); return isFinite(n) ? n : null; }
@@ -2759,6 +2759,19 @@ class Component extends DCLogic {
       }
       this.srvOld = false;
       let dirty = false;
+      // one-time + ongoing cleanup: collapse duplicate imported rows (same ticker+side)
+      const bestImp = {};
+      this.log.bets.forEach(b => {
+        if (!b.imported || !b.ticker) return;
+        const k = b.ticker + "|" + b.side;
+        if (!bestImp[k] || (b.result && !bestImp[k].result)) bestImp[k] = b;
+      });
+      const preN = this.log.bets.length;
+      this.log.bets = this.log.bets.filter(b => !b.imported || !b.ticker || bestImp[b.ticker + "|" + b.side] === b);
+      if (this.log.bets.length !== preN) {
+        this.pushEvent("\u25cb", "#eab54e", "CLEANUP: removed " + (preN - this.log.bets.length) + " duplicate imported rows (P&L was stacking)");
+        dirty = true;
+      }
       this.pfStats = { fills: (j.fills || []).length, setts: (j.settlements || []).length, pos: (j.positions || []).length, errors: j.errors || [] };
       const since = this.liveCfg.since || (Date.now() - 86400000);
       // ---- group buy fills by ticker+side ----
@@ -2845,7 +2858,7 @@ class Component extends DCLogic {
       (j.positions || []).forEach(p => {
         const q = this.fpCount(p, "position_fp", "position");
         if (!p.ticker || !q) return;
-        if (this.log.bets.some(x => x.ticker === p.ticker && !x.result)) return;
+        if (this.log.bets.some(x => x.ticker === p.ticker)) return; // ticker = one market instance; already accounted
         const pSide = q > 0 ? "YES" : "NO";
         const cnt = Math.abs(Math.round(q));
         const expo = (this.fpCents(p, "market_exposure_dollars", "market_exposure") || cnt * 50) / 100;
@@ -3677,7 +3690,7 @@ class Component extends DCLogic {
         this.setState({ rev: this.state.rev + 1 });
       },
       stopLive: () => this.disarm("manual STOP"),
-      buildTag: "BUILD v49",
+      buildTag: "BUILD v50",
       events: (this.events || []).map(e => {
         const d = new Date(e.ts);
         const p2 = n => String(n).padStart(2, "0");

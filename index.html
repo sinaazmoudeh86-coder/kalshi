@@ -1741,46 +1741,36 @@
 
   <!-- ===== Header bar ===== -->
   <div style="display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 16px 28px; border-bottom: 1px solid #20242e; background: #101318;">
-    <div style="display: flex; align-items: baseline; gap: 14px;">
-      <div style="font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 17px; letter-spacing: 0.08em; color: #e6e9ef;">KALSHI PAPER DESK</div>
-      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #7d8697;">{{ todayLabel }}</div>
-      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4a5261;">{{ buildTag }}</div>
-      <div style="font-size: 11px; color: {{ dataBadgeColor }}; border: 1px solid {{ dataBadgeBorder }}; border-radius: 3px; padding: 2px 8px; letter-spacing: 0.06em;">{{ dataBadge }}</div>
-      <div style="font-size: 11px; color: #7d8697; border: 1px solid #2a303c; border-radius: 3px; padding: 2px 8px; letter-spacing: 0.06em;">$25 FLAT STAKES</div>
+    <div style="display: flex; flex-direction: column; gap: 4px;">
+      <div style="font-family: 'IBM Plex Mono', monospace; font-weight: 600; font-size: 17px; letter-spacing: 0.08em; color: #e6e9ef;">KALSHI DESK</div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 10px; color: {{ dataBadgeColor }}; letter-spacing: 0.06em;">{{ dataBadge }}</span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #4a5261;">{{ todayLabel }} · {{ buildTag }}</span>
+      </div>
     </div>
-    <div style="display: flex; align-items: center; gap: 28px; flex-wrap: wrap; row-gap: 10px; justify-content: flex-end;">
+    <div style="display: flex; align-items: center; gap: 22px; flex-wrap: wrap; row-gap: 10px; justify-content: flex-end;">
+      <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end; background: #12211a; border: 1px solid #2c5a3f; border-radius: 8px; padding: 8px 16px; box-shadow: 0 0 0 1px rgba(79, 206, 127, 0.08), 0 8px 22px rgba(0, 0, 0, 0.3);">
+        <div style="font-size: 10px; letter-spacing: 0.1em; color: #4fce7f; font-weight: 700;">TOTAL VALUE</div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 27px; font-weight: 600; color: #4fce7f; line-height: 1.1;">{{ pvTotNow }}</div>
+      </div>
       <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
-        <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697;">{{ bankrollLabel }}</div>
-        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600;">{{ bankroll }}</div>
+        <div style="font-size: 10px; letter-spacing: 0.1em; color: #5aa7e8;">TOTAL CASH</div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: #5aa7e8;">{{ pvCashNow }}</div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
+        <div style="font-size: 10px; letter-spacing: 0.1em; color: #eab54e;">IN BETS</div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: #eab54e;">{{ pvRiskNow }}</div>
       </div>
       <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
         <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697;">TOTAL P&amp;L</div>
         <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: {{ pnlColor }};">{{ totalPnl }}</div>
         <div style="font-family: 'IBM Plex Mono', monospace; font-size: 9px; color: #7d8697;">{{ pnlSplit }}</div>
       </div>
-      <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
-        <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697;">HIT RATE</div>
-        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600;">{{ hitRate }}</div>
+      <div style="display: flex; align-items: center; gap: 8px; padding-left: 22px; border-left: 1px solid #20242e;">
+        <span style="width: 8px; height: 8px; border-radius: 50%; background: #4fce7f; display: inline-block; animation: kpdPulse 1.6s ease-in-out infinite;"></span>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 600; color: #4fce7f;">{{ scanStatus }}</div>
       </div>
-      <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
-        <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697;">AVG EDGE</div>
-        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: #4fce7f;">{{ avgEdge }}</div>
       </div>
-      <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end;">
-        <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697;">OPEN RISK</div>
-        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: #eab54e;">{{ openRisk }}</div>
-      </div>
-      <div style="display: flex; flex-direction: column; gap: 2px; align-items: flex-end; padding-left: 24px; border-left: 1px solid #20242e;">
-        <div style="font-size: 10px; letter-spacing: 0.1em; color: #7d8697;">SCANNER</div>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="width: 8px; height: 8px; border-radius: 50%; background: #4fce7f; display: inline-block; animation: kpdPulse 1.6s ease-in-out infinite;"></span>
-          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: #4fce7f;">{{ scanStatus }}</div>
-        </div>
-        <div style="height: 2px; width: 100%; background: #1d232e; border-radius: 1px; overflow: hidden; margin-top: 2px;">
-          <div style="height: 100%; width: 30%; background: linear-gradient(90deg, transparent, #4fce7f); animation: kpdSweep 5s linear infinite;"></div>
-        </div>
-      </div>
-      <button onClick="{{ resetLog }}" style="background: none; border: 1px solid #2a303c; border-radius: 3px; color: #7d8697; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.08em; padding: 6px 12px; cursor: pointer;" style-hover="border-color: #e5636a; color: #e5636a;">RESET LOG</button>
       <sc-if value="{{ liveArmed }}" hint-placeholder-val="{{ false }}">
         <button onClick="{{ stopLive }}" style="background: #e5636a; border: 1px solid #e5636a; border-radius: 3px; color: #0d0f13; font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; padding: 8px 14px; cursor: pointer; animation: kpdPulse 2s ease-in-out infinite;">■ STOP LIVE</button>
       </sc-if>
@@ -2160,6 +2150,7 @@
               </sc-for>
             </div>
             <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #7d8697;">{{ logSummary }}</div>
+            <button onClick="{{ resetLog }}" style="background: none; border: 1px solid #2a303c; border-radius: 3px; color: #7d8697; font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 0.08em; padding: 4px 10px; cursor: pointer;" style-hover="border-color: #e5636a; color: #e5636a;">RESET</button>
           </div>
         </div>
         <div style="background: linear-gradient(180deg, #151a22, #12161d); border: 1px solid #232936; border-radius: 8px; box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28); overflow-x: auto;">
@@ -2218,9 +2209,9 @@ class Component extends DCLogic {
 
   tick() {
     const now = Date.now();
-    if (this.liveCfg && this.liveCfg.armed && !this._wl && navigator.wakeLock) {
+    if (this.liveCfg && this.liveCfg.armed && !this._wl && !this._wlFail && navigator.wakeLock) {
       this._wl = true;
-      navigator.wakeLock.request("screen").then(l => { l.addEventListener("release", () => { this._wl = false; }); }).catch(() => { this._wl = false; });
+      navigator.wakeLock.request("screen").then(l => { l.addEventListener("release", () => { this._wl = false; }); }).catch(() => { this._wl = false; this._wlFail = true; });
     }
     if (this.liveCfg && this.liveCfg.secret && now - (this.lastBal || 0) > 60000) { this.lastBal = now; this.fetchStatus(); }
     if (this.liveCfg && this.liveCfg.secret && now - (this.lastPf || 0) > 30000) { this.lastPf = now; this.syncPortfolio(); }
@@ -2749,7 +2740,7 @@ class Component extends DCLogic {
           // true fill price/size from Kalshi overrides our quoted numbers
           if (b.live && !b.result && avg && cnt && (avg !== b.pc || cnt !== b.contracts)) {
             b.pc = avg; b.contracts = cnt; b.fee = ((n2, p2) => Math.ceil(n2 * (Math.round(7 * (p2 / 100) * (1 - p2 / 100) * 10) / 10)) / 100)(cnt, avg); b.fillSync = true; dirty = true;
-            b.fillState = cnt >= b.contracts ? "filled" : "partial";
+            b.fillState = cnt >= (b.ordered || cnt) ? "filled" : "partial";
           }
         } else if (g.ts >= since && avg && cnt) {
           // bet placed outside the desk — import it
@@ -2801,7 +2792,7 @@ class Component extends DCLogic {
       const posSet = {};
       (j.positions || []).forEach(p => {
         const q = this.fpCount(p, "position_fp", "position");
-        if (p.ticker && Math.abs(q) > 0) posSet[p.ticker] = true;
+        if (p.ticker && Math.abs(q) > 0) posSet[p.ticker] = Math.abs(q);
       });
       // import ANY Kalshi position missing from the log (positions are ground truth, no age limit)
       (j.positions || []).forEach(p => {
@@ -2841,7 +2832,9 @@ class Component extends DCLogic {
       if (kOpen !== dOpen) this.pushEvent("\u25cb", "#eab54e", "POSITION AUDIT: Kalshi reports " + kOpen + " open, desk shows " + dOpen + " \u2014 reconciling", { kind: "posaudit", coalesce: true });
       let audited = 0;
       this.log.bets.forEach(b => {
-        if (!b.result && b.live && b.ticker && posSet[b.ticker] && b.fillState === "resting") b.fillState = "partial";
+        if (!b.result && b.live && b.ticker && posSet[b.ticker] && (b.fillState === "resting" || b.fillState === "partial")) {
+          b.fillState = posSet[b.ticker] >= (b.ordered || b.contracts) ? "filled" : "partial";
+        }
         if (b.result || !b.live || !b.ticker || posSet[b.ticker]) return;
         const g = groups[b.ticker + "|" + b.side];
         if (Date.now() > b.closeTs + 30 * 60000) {
@@ -2949,6 +2942,14 @@ class Component extends DCLogic {
       });
       const j = await r.json().catch(() => ({}));
       if (r.ok) {
+        if (b.fillState === "partial") {
+          // remainder canceled; the filled portion stays as a real position
+          b.fillState = "filled"; b._cancelling = false;
+          this.pushEvent("\u2716", "#eab54e", "REMAINDER CANCELED (" + why + ") \u2014 filled portion kept \u00b7 " + b.title);
+          this.save(); this.setState({ rev: this.state.rev + 1 });
+          setTimeout(() => { this.lastPf = Date.now(); this.syncPortfolio(); }, 3000);
+          return;
+        }
         this.pushEvent("\u2716", "#eab54e", "ORDER CANCELED (" + why + ") \u00b7 " + b.title);
         this.voidBet(b.id, "canceled: " + why);
         setTimeout(() => { this.lastPf = Date.now(); this.syncPortfolio(); }, 3000);
@@ -2971,8 +2972,8 @@ class Component extends DCLogic {
     if (!this.liveCfg || !this.liveCfg.armed || !this.log) return;
     this.log.bets.forEach(b => {
       if (!b.live || b.result || !b.orderId || b._cancelling) return;
-      if (b.fillState !== "resting") return;
-      if (this.posSet && this.posSet[b.ticker]) return;
+      if (b.fillState !== "resting" && b.fillState !== "partial") return;
+      if (b.fillState === "resting" && this.posSet && this.posSet[b.ticker]) return;
       const age = now - (b.placedTs || 0);
       if (age < 45000) return;
       const c = cands.find(x => x.m.ticker === b.ticker && x.side === b.side);
@@ -2980,7 +2981,12 @@ class Component extends DCLogic {
       const sidePx = q ? (b.side === "YES" ? q.yes : 100 - q.yes) : null;
       let why = null;
       if (age > 10 * 60000) why = "unfilled 10min+ \u2014 stale limit";
-      else if (c && !c.pass) { const fg = c.gates.find(g => !g.pass); why = "thesis broke (" + (fg ? fg.k : "gates") + ")"; }
+      else if (c) {
+        // ignore DUPLICATE (our own resting order trips it) and LEARNING (cooldowns
+        // manage NEW entries, not orders already justified when placed)
+        const broken = c.gates.filter(g => !g.pass && g.k !== "DUPLICATE" && g.k !== "LEARNING");
+        if (broken.length) why = "thesis broke (" + broken[0].k + ")";
+      }
       else if (sidePx != null && sidePx - b.pc <= -5) why = "price " + (sidePx - b.pc) + "\u00a2 through the limit \u2014 adverse move";
       else if (!c && !q && age > 5 * 60000) why = "market left the scan pool";
       if (why) { b._cancelling = true; this.cancelOrder(b, why); }
@@ -3035,7 +3041,7 @@ class Component extends DCLogic {
           b.fillState = fc >= liveCount ? "filled" : fc > 0 ? "partial" : "resting";
           setTimeout(() => { this.lastPf = Date.now(); this.syncPortfolio(); }, 4000); // verify against Kalshi right after
           // log reflects the order actually submitted, not the signal quote
-          b.pc = price; b.contracts = liveCount;
+          b.pc = price; b.contracts = liveCount; b.ordered = liveCount;
           b.fee = ((n2, p2) => Math.ceil(n2 * (Math.round(7 * (p2 / 100) * (1 - p2 / 100) * 10) / 10)) / 100)(liveCount, price);
           this.save();
         }
@@ -3410,7 +3416,7 @@ class Component extends DCLogic {
         const liveCash = this.liveStatus && this.liveStatus.balance != null ? this.liveStatus.balance / 100 : null;
         const liveRisk = this.atRisk != null ? this.atRisk : ((this.log && this.log.bets) || []).filter(b => b.live && !b.result).reduce((s, b) => s + b.contracts * b.pc / 100, 0);
         const lastS = pvWin[pvWin.length - 1];
-        const curC = liveCash != null ? liveCash : (lastS ? lastS.c : 0);
+        const curC = liveCash != null ? liveCash : (lastS ? lastS.c : (start + totalPnl));
         const curR = liveCash != null ? liveRisk : (lastS ? lastS.r : 0);
         const out = {
           pvHas: pvWin.length >= 2,
@@ -3581,7 +3587,7 @@ class Component extends DCLogic {
         this.setState({ rev: this.state.rev + 1 });
       },
       stopLive: () => this.disarm("manual STOP"),
-      buildTag: "BUILD v40",
+      buildTag: "BUILD v43",
       events: (this.events || []).map(e => {
         const d = new Date(e.ts);
         const p2 = n => String(n).padStart(2, "0");

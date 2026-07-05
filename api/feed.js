@@ -15,15 +15,14 @@
 // call on top. Public market data only — no keys.
 const KBASE = "https://api.elections.kalshi.com/trade-api/v2";
 
-// close-time ladder in minutes: [from, to]
+// close-time ladder in minutes: [from, to] — ALL rungs are swept on every call
+// (serverless instances don't share memory, so nothing may depend on stored state)
 const RUNGS = [
   [4, 30], [30, 60], [60, 120], [120, 180], [180, 240], [240, 300], [300, 360],
   [360, 420], [420, 480], [480, 540], [540, 600], [600, 660], [660, 720],
   [720, 1205] // sports 18h watchlist rung
 ];
 
-let store = { byTicker: {} }; // persistent pool across warm invocations
-let rungIdx = 1;              // rotating pointer (rung 0 is swept every call)
 let cache = { ts: 0, pool: null, diag: null };
 let evCatCache = { ts: 0, map: null };
 let inflight = null;
@@ -133,74 +132,45 @@ async function sweep() {
   const t0 = Date.now();
   const diag = [];
   const evMap = await eventCats(diag);
-
-  // sweep one ladder rung: page its close-time span fully, WIPE the stored
-  // markets in that span, replace with what Kalshi just returned
-  const doRung = async (rung) => {
+  // STATELESS FULL-LADDER SWEEP: serverless instances don't share memory, so a
+  // rotating pointer never accumulates — instead every sweep walks ALL rungs.
+  // Each close-time span is small enough to page in 1-2 requests, so the whole
+  // ladder is ~20-30 cheap requests and can never bottleneck on pagination.
+  let raw = [];
+  const counts = [];
+  for (const rung of RUNGS) {
+    if (Date.now() - t0 > 42000) { diag.push("time-boxed at rung " + rung[0] + "m"); break; }
     const nowS = Math.floor(Date.now() / 1000);
     const W = "&min_close_ts=" + (nowS + rung[0] * 60) + "&max_close_ts=" + (nowS + rung[1] * 60);
-    let cursor = "", pages = 0, raw = [];
+    let cursor = "", pages = 0, got = 0;
     try {
       do {
         const j = await kfetch("/markets?limit=1000&status=open" + W + (cursor ? "&cursor=" + encodeURIComponent(cursor) : ""), 9000, 1);
         raw = raw.concat(j.markets || []);
+        got += (j.markets || []).length;
         cursor = j.cursor || "";
         pages++;
-      } while (cursor && pages < 6 && Date.now() - t0 < 40000);
-    } catch (e) { diag.push("rung" + rung[0] + "-" + rung[1] + "m:" + String((e && e.message) || e)); return; }
-    // WIPE the span, then replace
-    const lo = Date.now() + rung[0] * 60000, hi = Date.now() + rung[1] * 60000;
-    Object.keys(store.byTicker).forEach(k => {
-      const m = store.byTicker[k];
-      if (m.closeTs >= lo && m.closeTs < hi) delete store.byTicker[k];
-    });
-    const shaped = shape(raw, evMap);
-    const nowT = Date.now();
-    shaped.forEach(m => { m._seen = nowT; store.byTicker[m.ticker] = m; });
-    diag.push("rung" + rung[0] + "-" + rung[1] + "m:" + raw.length + "raw/" + pages + "pg\u2192" + shaped.length + (cursor ? "+more" : ""));
-  };
-
-  // cold store: prime the first rungs so the desk paints fast; warm store: always
-  // re-sweep rung 0 (freshest supply) + the next 3 rotating rungs
-  const cold = !Object.keys(store.byTicker).length;
-  const todo = [RUNGS[0]];
-  const nRot = cold ? 3 : 3;
-  for (let k = 0; k < nRot; k++) {
-    const r = RUNGS[1 + ((rungIdx - 1 + k) % (RUNGS.length - 1))];
-    if (todo.indexOf(r) < 0) todo.push(r);
+      } while (cursor && pages < 6 && Date.now() - t0 < 42000);
+    } catch (e) { counts.push(rung[0] + "m:ERR"); continue; }
+    counts.push(rung[0] + "m:" + got + (cursor ? "+" : ""));
   }
-  rungIdx = 1 + ((rungIdx - 1 + nRot) % (RUNGS.length - 1));
-  for (const r of todo) {
-    if (Date.now() - t0 > 40000) { diag.push("ladder:time-boxed"); break; }
-    await doRung(r);
-  }
+  diag.push("ladder " + counts.join(" "));
 
   // FAST-SERIES LANE: 15-min/hourly crypto + daily index series, probed every call
   const fastSeries = ["KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M", "KXBTCD", "KXETHD", "KXBTC", "KXETH", "KXINXD", "KXNASDAQ100D"];
-  let fastRaw = [];
   for (const s of fastSeries) {
-    if (Date.now() - t0 > 48000) break;
+    if (Date.now() - t0 > 50000) break;
     try {
       const j = await kfetch("/markets?limit=100&status=open&series_ticker=" + s, 8000, 1);
-      fastRaw = fastRaw.concat(j.markets || []);
+      raw = raw.concat(j.markets || []);
     } catch (e) {}
-    await sleep(200);
+    await sleep(150);
   }
-  const fastShaped = shape(fastRaw, evMap);
-  const nowT2 = Date.now();
-  fastShaped.forEach(m => { m._seen = nowT2; store.byTicker[m.ticker] = m; }); // upsert, no wipe
-  diag.push("fast-series:" + fastShaped.length);
 
-  // prune: settled/closing markets and anything not re-confirmed within 50 min
-  Object.keys(store.byTicker).forEach(k => {
-    const m = store.byTicker[k];
-    if (m.closeTs - nowT2 < 4 * 60000 || nowT2 - (m._seen || 0) > 50 * 60000) delete store.byTicker[k];
-  });
-
-  const pool = quotaPool(Object.values(store.byTicker));
+  const pool = quotaPool(shape(raw, evMap));
   const nSp = pool.filter(m => m.c === "SPORTS").length;
   const nCr = pool.filter(m => m.c === "CRYPTO").length;
-  diag.push("pool:" + pool.length + " sports:" + nSp + " crypto:" + nCr + " store:" + Object.keys(store.byTicker).length);
+  diag.push("pool:" + pool.length + " sports:" + nSp + " crypto:" + nCr);
   return { pool, diag };
 }
 
@@ -223,8 +193,8 @@ module.exports = async (req, res) => {
       });
       return res.status(200).json({ ts: Date.now(), quotes });
     }
-    // short cache (20s) — every cache miss advances the ladder, so the sweep keeps moving
-    if (cache.pool && cache.pool.length && Date.now() - cache.ts < 20000) {
+    // 45s cache — a full-ladder sweep is ~25 requests, so don't re-run it per client tick
+    if (cache.pool && cache.pool.length && Date.now() - cache.ts < 45000) {
       return res.status(200).json({ ts: cache.ts, ageMs: Date.now() - cache.ts, cached: true, pool: cache.pool, diag: cache.diag });
     }
     if (!inflight) inflight = sweep().finally(() => { inflight = null; });

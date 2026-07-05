@@ -1,9 +1,9 @@
-# Kalshi Live Desk — DEPLOYMENT (BUILD v83 · Kalshi-only, rotating-ladder feed)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v84 · Kalshi-only, full-ladder feed)
 
 3 files + this README. The repo root must look exactly like this:
 
 ```
-index.html      <- the dashboard (header must say BUILD v83 after deploy)
+index.html      <- the dashboard (header must say BUILD v84 after deploy)
 vercel.json     <- proxies /api/kalshi/* to Kalshi's market-data API + feed budget
 api/
   trade.js      <- signed order placement + portfolio sync (needs env vars)
@@ -17,9 +17,20 @@ api/
    inside a folder named `api`.
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v83**.
+4. Check the header — it must say **BUILD v84**.
 
-## What v83 adds — self-contradiction + payoff-asymmetry protection
+## What v84 fixes — pool stuck at ~90 markets
+
+- The v80 rotating ladder kept its accumulated pool in lambda memory — but Vercel
+  serverless gives a different/cold instance constantly, so every response was
+  "rung 0 + 3 rungs" ≈ 90 markets and accumulation never happened.
+- `api/feed.js` now sweeps the ENTIRE ladder on every call (stateless-safe): each
+  small close-time window pages in 1–2 requests, ~25 requests total, time-boxed.
+- The dashboard also ACCUMULATES across feed responses (merge + 30-min staleness
+  prune) so a partial sweep can only add markets, never shrink the watchlist.
+- Feed diag shows per-rung counts: `ladder 4m:120 30m:85 …`.
+
+## What v83 added
 
 - **REVERSAL gate (9th gate)**: the desk can no longer bet the opposite direction
   on the same underlying within 6h of its own bet (Jul 5: NO on BTC ≥$62,800 at

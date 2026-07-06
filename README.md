@@ -1,4 +1,4 @@
-# Kalshi Live Desk — DEPLOYMENT (BUILD v97 · Kalshi-only, sub-1h hunter)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v99 · Kalshi-only, sub-1h hunter)
 
 3 files + this README. The repo root must look exactly like this:
 
@@ -17,7 +17,26 @@ api/
    inside a folder named `api`.
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v97**.
+4. Check the header — it must say **BUILD v99**.
+
+## What v99 fixes — Jul 6 tape review
+
+- **Junk-payout filter**: net payout must be ≥ $1.25. Kills the 98–99¢ entries
+  that risked $25 to win $0.01–$0.47 after fees; the final-10-min high-band
+  exception now caps at 96¢ (was 98¢).
+- **No-fill churn guard**: one immediate retry allowed; after two voided
+  attempts a market goes quiet for 30 min (BNB/gold/Shiba were re-signaled
+  every 1–3 min, all NO FILL — wasted slots, log spam, duplicate rows).
+- **Fill audit**: if Kalshi fills more contracts than ordered (the −$49 weather
+  losses on a $25 stake = double fill) a loud FILL AUDIT event fires; a bet
+  that settles WON with negative P&L is flagged instead of hiding in the log.
+
+## What v98 fixes
+
+- Killed the "pwKey / onPwChange is not defined" errors in the bottom banner:
+  typing into the password box before the app finished mounting executed raw
+  template attributes as native JS. Pre-mount no-op handlers added; zero
+  behavior change.
 
 ## What v97 changes — weather RE-ENABLED (post-peak lock-in lane)
 

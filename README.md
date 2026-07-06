@@ -1,9 +1,9 @@
-# Kalshi Live Desk — DEPLOYMENT (BUILD v88 · Kalshi-only, full-ladder feed)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v89 · Kalshi-only, full-ladder feed)
 
 3 files + this README. The repo root must look exactly like this:
 
 ```
-index.html      <- the dashboard (header must say BUILD v88 after deploy)
+index.html      <- the dashboard (header must say BUILD v89 after deploy)
 vercel.json     <- proxies /api/kalshi/* to Kalshi's market-data API + feed budget
 api/
   trade.js      <- signed order placement + portfolio sync (needs env vars)
@@ -17,9 +17,21 @@ api/
    inside a folder named `api`.
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v88**.
+4. Check the header — it must say **BUILD v89**.
 
-## What v88 adds — learned from the Jul 4–5 record
+## What v89 fixes — bar-vs-signal miscalibration (0 qualify for hours)
+
+- The v86 observed-tape edge topped out ~2–3¢ while the required bar sat above
+  it nearly everywhere, so NET EDGE silently killed every survivor. The edge
+  model is recalibrated to the desk's own settled record (favorites 80–95¢
+  realized ~3–5¢ true edge before fees): higher base, stronger convergence
+  bonus, momentum cap +2.5¢. Penalties (chop, wide spread, against-tape)
+  unchanged.
+- AUTO HORIZON now counts TRADABLE favorites (70–92¢ band) instead of raw
+  markets when deciding to widen — 4h no longer looks "rich" because of 300
+  untradable longshots.
+
+## What v88 added — learned from the Jul 4–5 record
 
 - **Fill capture**: ~half of winning signals died as NO FILL resting maker orders.
   Orders now TAKE the ask unless the spread is genuinely wide (≥3¢) on a slow

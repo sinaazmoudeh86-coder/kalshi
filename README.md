@@ -1,9 +1,9 @@
-# Kalshi Live Desk — DEPLOYMENT (BUILD v92 · Kalshi-only, two-tier scan)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v93 · Kalshi-only, two-tier scan)
 
 3 files + this README. The repo root must look exactly like this:
 
 ```
-index.html      <- the dashboard (header must say BUILD v92 after deploy)
+index.html      <- the dashboard (header must say BUILD v93 after deploy)
 vercel.json     <- proxies /api/kalshi/* to Kalshi's market-data API + feed budget
 api/
   trade.js      <- signed order placement + portfolio sync (needs env vars)
@@ -17,7 +17,15 @@ api/
    inside a folder named `api`.
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v92**.
+4. Check the header — it must say **BUILD v93**.
+
+## What v93 fixes — knife-edge NET EDGE misses
+
+- A textbook candidate (calm 88¢ favorite, tight book) nets ~+4.4¢ while learned
+  penalties pushed the bar to the 4.5¢ cap — a permanent 0.1¢ miss. Bar cap is
+  now 4.0¢ (clean setups clear by ~0.5¢; choppy/misaligned tape still fails).
+- Convergence bonus window widened to ≤75m / ≥78¢.
+- The NET EDGE gate now shows the bar: "+4.4¢ vs bar 4.0¢".
 
 ## What v91–v92 rebuild — scanning + placement, ground up
 

@@ -1,4 +1,4 @@
-# Kalshi Live Desk — DEPLOYMENT (BUILD v104 · Kalshi-only, sub-1h hunter)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v105 · Kalshi-only, sub-1h hunter)
 
 3 files + this README. The repo root must look exactly like this:
 
@@ -17,8 +17,17 @@ api/
    inside a folder named `api`.
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v104**. **api/feed.js changed in
+4. Check the header — it must say **BUILD v105**. **api/feed.js changed in
    v104 — make sure it is redeployed too.**
+
+## What v105 changes
+
+- **Crypto slot cap removed for high-prob entries**: if all 9 gates pass on a
+  ≥82¢ favorite, it places — no more "slots full 3/3, skipping". Sub-82¢
+  entries still cap at 1 concurrent crypto position, and the one-underlying
+  rule stands (two BTC strikes = one tape risk). Still max 3 new entries per
+  5s sweep and $25 per bet, so exposure ramps gradually, gate-checked each
+  step.
 
 ## What v104 changes — review MORE bets
 

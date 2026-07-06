@@ -15,12 +15,15 @@
 // call on top. Public market data only — no keys.
 const KBASE = "https://api.elections.kalshi.com/trade-api/v2";
 
-// close-time ladder in minutes: [from, to] — ALL rungs are swept on every call
-// (serverless instances don't share memory, so nothing may depend on stored state)
+// close-time ladder: [fromMin, toMin, maxPages]. SUB-1H HUNTING IS THE PRIORITY:
+// the first hour is cut into 15-min slices with deep page budgets so busy days
+// (MVE parlay floods) can't truncate real soon-settling markets out of the sweep.
+// Far rungs get shallow budgets — they only feed the watchlist.
 const RUNGS = [
-  [4, 30], [30, 60], [60, 120], [120, 180], [180, 240], [240, 300], [300, 360],
-  [360, 420], [420, 480], [480, 540], [540, 600], [600, 660], [660, 720],
-  [720, 1205] // sports 18h watchlist rung
+  [4, 15, 8], [15, 30, 8], [30, 45, 8], [45, 60, 8],
+  [60, 120, 4], [120, 180, 3], [180, 240, 3], [240, 300, 2], [300, 360, 2],
+  [360, 420, 2], [420, 480, 2], [480, 540, 2], [540, 600, 2], [600, 660, 2], [660, 720, 2],
+  [720, 1205, 3] // sports 18h watchlist rung
 ];
 
 let cache = { ts: 0, pool: null, diag: null };
@@ -119,15 +122,18 @@ function shape(raw, evMap) {
   return filtered.length ? filtered : out.filter(m => m.bid > 0 && m.ask < 100);
 }
 
-// per-category quotas so no category crowds out another
+// per-category quotas so no category crowds out another — but SUB-1H markets are
+// exempt from every quota: the desk's entire strategy lives there, so anything
+// settling within 70 min stays in the pool no matter its category or volume
 function quotaPool(all) {
-  const byVol = all.slice().sort((a, b) => b.vol - a.vol);
+  const nowT = Date.now();
+  const subhr = all.filter(m => m.closeTs - nowT <= 70 * 60000);
+  const rest = all.filter(m => m.closeTs - nowT > 70 * 60000);
+  const byVol = rest.slice().sort((a, b) => b.vol - a.vol);
   const sports = byVol.filter(m => m.c === "SPORTS").slice(0, 600);
-  // crypto slots go soonest-settling first — fresh fast strikes carry $0 printed
-  // volume and were losing their slots to stale high-volume dailies
-  const crypto = all.filter(m => m.c === "CRYPTO").sort((a, b) => a.closeTs - b.closeTs).slice(0, 400);
-  const other = byVol.filter(m => m.c !== "SPORTS" && m.c !== "CRYPTO").slice(0, 600);
-  return other.concat(crypto, sports);
+  const crypto = rest.filter(m => m.c === "CRYPTO").sort((a, b) => a.closeTs - b.closeTs).slice(0, 400);
+  const other = byVol.filter(m => m.c !== "SPORTS" && m.c !== "CRYPTO").slice(0, 500);
+  return subhr.concat(other, crypto, sports);
 }
 
 async function sweep() {
@@ -152,7 +158,7 @@ async function sweep() {
         got += (j.markets || []).length;
         cursor = j.cursor || "";
         pages++;
-      } while (cursor && pages < 3 && Date.now() - t0 < 42000); // 3-page cap: rungs that blow past it are MVE parlay noise; real fast supply comes from the direct series lane
+      } while (cursor && pages < (rung[2] || 3) && Date.now() - t0 < 42000);
     } catch (e) { counts.push(rung[0] + "m:ERR"); continue; }
     counts.push(rung[0] + "m:" + got + (cursor ? "+" : ""));
   }
@@ -173,7 +179,8 @@ async function sweep() {
   const pool = quotaPool(shape(raw, evMap));
   const nSp = pool.filter(m => m.c === "SPORTS").length;
   const nCr = pool.filter(m => m.c === "CRYPTO").length;
-  diag.push("pool:" + pool.length + " sports:" + nSp + " crypto:" + nCr);
+  const nSub = pool.filter(m => m.closeTs - Date.now() <= 70 * 60000).length;
+  diag.push("pool:" + pool.length + " sub-1h:" + nSub + " sports:" + nSp + " crypto:" + nCr);
   return { pool, diag };
 }
 

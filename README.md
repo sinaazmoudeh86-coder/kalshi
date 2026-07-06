@@ -1,9 +1,9 @@
-# Kalshi Live Desk — DEPLOYMENT (BUILD v93 · Kalshi-only, two-tier scan)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v97 · Kalshi-only, sub-1h hunter)
 
 3 files + this README. The repo root must look exactly like this:
 
 ```
-index.html      <- the dashboard (header must say BUILD v93 after deploy)
+index.html      <- the dashboard (header must say BUILD v94 after deploy)
 vercel.json     <- proxies /api/kalshi/* to Kalshi's market-data API + feed budget
 api/
   trade.js      <- signed order placement + portfolio sync (needs env vars)
@@ -17,7 +17,61 @@ api/
    inside a folder named `api`.
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v93**.
+4. Check the header — it must say **BUILD v97**.
+
+## What v97 changes — weather RE-ENABLED (post-peak lock-in lane)
+
+Weather failed before because the desk made FORECAST bets (morning entries on a
+model temperature). Daily temp extremes are monotonic — the high only ratchets
+UP, the low only ratchets DOWN — so after the diurnal turn the outcome is
+physics, not forecast, and extreme-priced weather markets historically settled
+true ~98% of the time. v97 trades ONLY that slice:
+
+- **Clock gate**: daily-HIGH entries only after ~3pm local station time (city
+  decoded from the ticker, DST offsets); daily-LOW only after ~9am local.
+- **Short window**: market must close within 5h — no long forecast exposure.
+- **85–96¢ favorites only**; ≥90¢ with aligned book gets a small edge credit
+  (post-peak certainty is under-priced).
+- **Observed-stable book**: 3+ quote samples, ≤5¢/10m range, no ≥3¢ drift
+  against the side — a locked outcome does not reprice; movement = still in play.
+- **Max 1 open weather position** · **24h stand-down** after any weather loss.
+- Existing NWS settlement patience (20h grace, "AWAITING NWS RPT") unchanged.
+- The v95 slippage guard applies to weather too (bandMin 85¢).
+
+## What v96 changes — hero bar polish (presentation ONLY)
+
+- The top hero/status bar is now sticky (stays pinned while scrolling) with a
+  glass blur background, stronger typography hierarchy, cleaner separators,
+  a glowing TOTAL VALUE card, and smooth count-up animations + green/red
+  flashes when values change.
+- **Zero data/logic changes**: same fields, same order, same API bindings,
+  same refresh intervals, same calculations. The count-up element animates
+  whatever formatted string the existing pipeline already produces.
+
+## What v95 fixes — the Jul 6 $62,700 loss + high-prob ramp
+
+- **SLIPPAGE GUARD (the loss)**: gates were checked at the signal quote (92¢,
+  "model 95%"), but placement always takes the live ask — which was 4¢ (BTC had
+  already fallen through the strike; the feed quote was stale). The order was
+  re-sized to 625 contracts and bought a 4% longshot the model never evaluated.
+  Now: if the executable price is more than 3¢ from the evaluated price, or
+  below the win-odds band, the order is ABORTED, the entry voided, and the
+  ticker cooled off for 2h. A signal is only valid at the price it was scored.
+- **HIGH-PROB RAMP**: the small-payout/high-win-rate book (≥82¢ favorites) is
+  the proven lane — those entries may now run **3 concurrent crypto positions**
+  (was 1) and **up to 3 entries per sweep** (was 1). Sub-82¢ entries keep the
+  old discipline (max 1 crypto, one entry ends the sweep). Never two positions
+  on the same underlying, whatever the strike or settlement.
+
+## What v94 changes — sub-1h hunting across ALL categories
+
+- The first hour is now swept in four 15-min slices with DEEP page budgets
+  (8 pages each) — busy-day MVE parlay floods can no longer truncate real
+  soon-settling markets (econ, commodities, politics, entertainment included).
+  Far rungs get shallow budgets; they only feed the watchlist.
+- **Sub-1h markets are exempt from every pool quota** — anything settling
+  within 70 min stays in the pool regardless of category or volume.
+- Feed diag now reports `sub-1h:` count.
 
 ## What v93 fixes — knife-edge NET EDGE misses
 

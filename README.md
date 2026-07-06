@@ -1,9 +1,9 @@
-# Kalshi Live Desk — DEPLOYMENT (BUILD v89 · Kalshi-only, full-ladder feed)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v92 · Kalshi-only, two-tier scan)
 
 3 files + this README. The repo root must look exactly like this:
 
 ```
-index.html      <- the dashboard (header must say BUILD v89 after deploy)
+index.html      <- the dashboard (header must say BUILD v92 after deploy)
 vercel.json     <- proxies /api/kalshi/* to Kalshi's market-data API + feed budget
 api/
   trade.js      <- signed order placement + portfolio sync (needs env vars)
@@ -17,9 +17,39 @@ api/
    inside a folder named `api`.
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v89**.
+4. Check the header — it must say **BUILD v92**.
 
-## What v89 fixes — bar-vs-signal miscalibration (0 qualify for hours)
+## What v91–v92 rebuild — scanning + placement, ground up
+
+Scanning:
+- **Two-tier quote engine**: hot lane (in-window tradable markets + anything held)
+  re-priced every 15s in one request; full pool every 60s. Tape samples every 12s
+  — a hot market becomes tradable in ~40s instead of 2+ minutes.
+- **Fast series probed directly every sweep** (15m/hourly/daily crypto incl. DOGE,
+  SOL/XRP dailies, index dailies) — guaranteed coverage, no pagination risk.
+  Ladder rungs capped at 3 pages (past that it's MVE parlay noise).
+- **Crypto pool slots go soonest-settling first** — fresh strikes ($0 printed
+  volume) no longer lose their slots to stale high-volume dailies.
+- **Premium-stack cap**: base bar + learned band penalties + domain taxes stacked
+  to an unpassable ~5¢+ bar on a desk running 83–10. Every brake still applies;
+  the SUM is capped at 4.5¢.
+
+Placement:
+- **Always take the ask** — the record priced missed fills far above the 1–2¢
+  spread. No more resting maker entries.
+- Unfilled orders on fast markets (<45m to settle) pulled at 90s (3 min
+  elsewhere); the retry takes the fresh ask.
+
+## What v90 fixes — LIQUIDITY blocking every survivor
+
+- In-window, in-band candidates are mostly fresh fast crypto strikes with ~$0
+  PRINTED 24h volume; v79 let them into the pool via their tight book but the
+  LIQUIDITY gate still demanded $100 volume, so nothing could fire.
+- The gate now passes on EITHER printed volume OR a tight two-sided book
+  (≤2¢ spread, both sides 3–97¢) — a live tight book IS liquidity before
+  volume prints. Sports still require real printed volume.
+
+## What v89 fixed — bar-vs-signal miscalibration (0 qualify for hours)
 
 - The v86 observed-tape edge topped out ~2–3¢ while the required bar sat above
   it nearly everywhere, so NET EDGE silently killed every survivor. The edge

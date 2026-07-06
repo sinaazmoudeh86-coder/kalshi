@@ -121,10 +121,12 @@ function shape(raw, evMap) {
 
 // per-category quotas so no category crowds out another
 function quotaPool(all) {
-  const sorted = all.slice().sort((a, b) => b.vol - a.vol);
-  const sports = sorted.filter(m => m.c === "SPORTS").slice(0, 600);
-  const crypto = sorted.filter(m => m.c === "CRYPTO").slice(0, 400);
-  const other = sorted.filter(m => m.c !== "SPORTS" && m.c !== "CRYPTO").slice(0, 600);
+  const byVol = all.slice().sort((a, b) => b.vol - a.vol);
+  const sports = byVol.filter(m => m.c === "SPORTS").slice(0, 600);
+  // crypto slots go soonest-settling first — fresh fast strikes carry $0 printed
+  // volume and were losing their slots to stale high-volume dailies
+  const crypto = all.filter(m => m.c === "CRYPTO").sort((a, b) => a.closeTs - b.closeTs).slice(0, 400);
+  const other = byVol.filter(m => m.c !== "SPORTS" && m.c !== "CRYPTO").slice(0, 600);
   return other.concat(crypto, sports);
 }
 
@@ -150,14 +152,15 @@ async function sweep() {
         got += (j.markets || []).length;
         cursor = j.cursor || "";
         pages++;
-      } while (cursor && pages < 6 && Date.now() - t0 < 42000);
+      } while (cursor && pages < 3 && Date.now() - t0 < 42000); // 3-page cap: rungs that blow past it are MVE parlay noise; real fast supply comes from the direct series lane
     } catch (e) { counts.push(rung[0] + "m:ERR"); continue; }
     counts.push(rung[0] + "m:" + got + (cursor ? "+" : ""));
   }
   diag.push("ladder " + counts.join(" "));
 
-  // FAST-SERIES LANE: 15-min/hourly crypto + daily index series, probed every call
-  const fastSeries = ["KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M", "KXBTCD", "KXETHD", "KXBTC", "KXETH", "KXINXD", "KXNASDAQ100D"];
+  // FAST-SERIES LANE: the desk's core supply — 15-min/hourly/daily crypto + index
+  // dailies — probed DIRECTLY every call (no pagination risk, ~16 cheap requests)
+  const fastSeries = ["KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M", "KXDOGE15M", "KXBTC", "KXETH", "KXSOL", "KXXRP", "KXBTCD", "KXETHD", "KXSOLD", "KXXRPD", "KXDOGED", "KXINXD", "KXNASDAQ100D"];
   for (const s of fastSeries) {
     if (Date.now() - t0 > 50000) break;
     try {

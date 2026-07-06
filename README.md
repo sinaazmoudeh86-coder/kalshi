@@ -1,9 +1,9 @@
-# Kalshi Live Desk — DEPLOYMENT (BUILD v84 · Kalshi-only, full-ladder feed)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v87 · Kalshi-only, full-ladder feed)
 
 3 files + this README. The repo root must look exactly like this:
 
 ```
-index.html      <- the dashboard (header must say BUILD v84 after deploy)
+index.html      <- the dashboard (header must say BUILD v87 after deploy)
 vercel.json     <- proxies /api/kalshi/* to Kalshi's market-data API + feed budget
 api/
   trade.js      <- signed order placement + portfolio sync (needs env vars)
@@ -17,9 +17,34 @@ api/
    inside a folder named `api`.
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v84**.
+4. Check the header — it must say **BUILD v87**.
 
-## What v84 fixes — pool stuck at ~90 markets
+## What v87 changes
+
+- Removed the 5-open-position portfolio cap. Per-category caps (1 crypto,
+  2 sports), one-entry-per-sweep, and all gates/brakes remain.
+
+## What v86 changed — betting-logic polish
+
+- **Real signal, not noise**: the "model edge" was a synthetic random signal.
+  It is now computed purely from the OBSERVED tape: favorite-bias premium +
+  aligned momentum (capped) − tape instability − wide-spread tax + convergence
+  decay for deep calm favorites near settlement. A market the desk hasn't
+  watched for ~2 minutes has edge 0 and cannot pass NET EDGE — watch, then trade.
+- **Entries ranked by true margin**: money goes to the widest (net edge −
+  required edge) margin, not the highest display score.
+- **One entry per sweep** (paper and live) — no burst-entering a correlated batch.
+
+## What v85 added — the desk explains WHY it isn't betting
+
+- Sweep lines with 0 qualifiers now list the top blocking gates, e.g.
+  `blockers: LEARNING:180 T-MINUS:70 PRICE:38`.
+- If a standing brake (circuit breaker or asymmetry brake) is parking the desk,
+  a red `DESK PARKED` line appears every ~10 sweeps saying which brake and when
+  it clears. After the Jul 5 losses, the asymmetry brake blocks all ≥80¢ entries
+  until the 24h record recovers — that quiet period is intentional, not a bug.
+
+## What v84 fixed — pool stuck at ~90 markets
 
 - The v80 rotating ladder kept its accumulated pool in lambda memory — but Vercel
   serverless gives a different/cold instance constantly, so every response was

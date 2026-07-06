@@ -1,9 +1,9 @@
-# Kalshi Live Desk — DEPLOYMENT (BUILD v87 · Kalshi-only, full-ladder feed)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v88 · Kalshi-only, full-ladder feed)
 
 3 files + this README. The repo root must look exactly like this:
 
 ```
-index.html      <- the dashboard (header must say BUILD v87 after deploy)
+index.html      <- the dashboard (header must say BUILD v88 after deploy)
 vercel.json     <- proxies /api/kalshi/* to Kalshi's market-data API + feed budget
 api/
   trade.js      <- signed order placement + portfolio sync (needs env vars)
@@ -17,9 +17,19 @@ api/
    inside a folder named `api`.
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v87**.
+4. Check the header — it must say **BUILD v88**.
 
-## What v87 changes
+## What v88 adds — learned from the Jul 4–5 record
+
+- **Fill capture**: ~half of winning signals died as NO FILL resting maker orders.
+  Orders now TAKE the ask unless the spread is genuinely wide (≥3¢) on a slow
+  market; unfilled limits are canceled after 3 min (was 10) and the retry always
+  takes the ask.
+- **Family form**: the desk now learns per category+side from its own settled
+  record (e.g. crypto-NO won ~90%+, YES near-strike held the losses) —
+  outperforming families get a 0.5¢ lower edge bar, underperforming ones +1.5¢.
+
+## What v87 changed
 
 - Removed the 5-open-position portfolio cap. Per-category caps (1 crypto,
   2 sports), one-entry-per-sweep, and all gates/brakes remain.

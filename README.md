@@ -1,4 +1,4 @@
-# Kalshi Live Desk — DEPLOYMENT (BUILD v105 · Kalshi-only, sub-1h hunter)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v107 · LIVE-ONLY · Kalshi-only, sub-1h hunter)
 
 3 files + this README. The repo root must look exactly like this:
 
@@ -17,8 +17,19 @@ api/
    inside a folder named `api`.
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v105**. **api/feed.js changed in
-   v104 — make sure it is redeployed too.**
+4. Check the header — it must say **BUILD v107**.
+
+## What v107 changes — LIVE-ONLY build (paper mode removed)
+
+- **No paper entries, ever.** Unarmed, the desk scans and logs "SIGNAL … not
+  armed, no order sent" but places nothing. Every position in the log is a real
+  Kalshi order. On first load, leftover OPEN paper positions from earlier builds
+  are voided automatically so they can't block real orders via exposure caps.
+- **Top bar / money flow pull the real account API only**: "—" until you ARM;
+  then strictly the atomic Kalshi ledger figures. Old paper samples in the
+  browser are excluded from the chart permanently.
+- ARM (trade secret) is still required before any order — that's the server
+  auth, not a paper/live toggle.
 
 ## What v105 changes
 

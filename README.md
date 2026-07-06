@@ -1,4 +1,4 @@
-# Kalshi Live Desk — DEPLOYMENT (BUILD v99 · Kalshi-only, sub-1h hunter)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v100 · Kalshi-only, sub-1h hunter)
 
 3 files + this README. The repo root must look exactly like this:
 
@@ -17,7 +17,14 @@ api/
    inside a folder named `api`.
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v99**.
+4. Check the header — it must say **BUILD v100**.
+
+## What v100 changes
+
+- **Activity log retains 24 hours** (was last 50 rows) on both the dashboard
+  and the server engine (5000-row safety cap).
+- **COPY TEXT button** in the Activity header — copies the whole 24h log as
+  plain text (timestamped rows) for pasting into chat.
 
 ## What v99 fixes — Jul 6 tape review
 

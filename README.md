@@ -1,4 +1,4 @@
-# Kalshi Live Desk — DEPLOYMENT (BUILD v102 · Kalshi-only, sub-1h hunter)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v104 · Kalshi-only, sub-1h hunter)
 
 3 files + this README. The repo root must look exactly like this:
 
@@ -17,7 +17,27 @@ api/
    inside a folder named `api`.
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v102**.
+4. Check the header — it must say **BUILD v104**. **api/feed.js changed in
+   v104 — make sure it is redeployed too.**
+
+## What v104 changes — review MORE bets
+
+- **Feed bug fixed**: api/feed.js was still filtering out ALL weather markets,
+  so the post-peak weather lane (enabled v97) never saw a single candidate.
+  Weather now flows through (price cap raised to 96¢ to match the weather band).
+- **Fast-series lane widened**: hourly S&P/Nasdaq series (KXINXU,
+  KXNASDAQ100U) and 8 weather-station dailies are probed directly every sweep
+  alongside crypto — these settle constantly and are exactly the desk's lane.
+- Reminder: more markets scored ≠ lower standards — all 9 gates still apply;
+  this just widens the funnel's mouth.
+
+## What v103 changes
+
+- **Sweep-on-fresh-quotes**: a sweep now fires the instant new quotes land
+  (hot lane / full refresh) instead of waiting up to 5s for the next tick.
+  Worst-case reaction time drops from ~20s to ~15s with zero extra API load.
+  (The 5s idle cadence stays — faster sweeping without fresh data just
+  re-scores the same numbers; the Kalshi API rate limit is the true ceiling.)
 
 ## What v102 changes — 4:21 PM log review
 

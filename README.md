@@ -1,4 +1,4 @@
-# Kalshi Live Desk — DEPLOYMENT (BUILD v100 · Kalshi-only, sub-1h hunter)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v102 · Kalshi-only, sub-1h hunter)
 
 3 files + this README. The repo root must look exactly like this:
 
@@ -17,7 +17,27 @@ api/
    inside a folder named `api`.
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v100**.
+4. Check the header — it must say **BUILD v102**.
+
+## What v102 changes — 4:21 PM log review
+
+- **AUTO HORIZON hysteresis**: the entry window flapped 12h→4h→1h within 5
+  minutes, re-scoring the whole pool on each flip. A switch now requires its
+  condition to hold ~90s and 3 min since the last switch (an EMPTY window
+  still widens immediately so startup stays fast).
+- **Smarter log coalescing**: repeated rows (sweep summaries, hot lane,
+  "already exposed — skipping…") now merge even when other rows interleave —
+  the same skip message printed 6× in 30s.
+- (v101's ACTIVE-only REVERSAL rule is included — the 3h-old settled-bet
+  blocks in this log are gone once deployed.)
+
+## What v101 changes
+
+- **REVERSAL gate narrowed**: only blocks when an ACTIVE (open, unsettled)
+  opposite-direction bet exists on the same underlying — holding both sides
+  guarantees one loses. Settled/expired bets no longer block for 6h; the 4:07 PM
+  log showed a 92¢ BTC entry blocked by a YES from 3 hours earlier that had
+  already settled.
 
 ## What v100 changes
 

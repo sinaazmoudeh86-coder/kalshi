@@ -1,9 +1,9 @@
-# Kalshi Live Desk — DEPLOYMENT (BUILD v98 · Kalshi-only, sub-1h hunter)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v99 · quiet log + ask guard · Kalshi-only, sub-1h hunter)
 
 3 files + this README. The repo root must look exactly like this:
 
 ```
-index.html      <- the dashboard (header must say BUILD v94 after deploy)
+index.html      <- the dashboard (header must say BUILD v99 after deploy)
 vercel.json     <- proxies /api/kalshi/* to Kalshi's market-data API + feed budget
 api/
   trade.js      <- signed order placement + portfolio sync (needs env vars)
@@ -17,7 +17,19 @@ api/
    inside a folder named `api`.
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v98**.
+4. Check the header — it must say **BUILD v99**.
+
+## What v99 adds — on top of the v98 revert (Jul 7)
+
+- **WORTHLESS-AT-ASK GUARD**: every live order (initial or retry) recomputes net
+  payout at the ACTUAL limit price; if it's under the $1.25 floor the order is
+  aborted (RETRY/ORDER ABORTED) and the market cools off 2h — kills the
+  cancel→re-enter churn on 97¢ signals whose ask sits at 99¢.
+- **Quiet activity log**: heartbeats (sweeps, hot lane, quote refresh, feed
+  connected) coalesce in place with a ×N counter; fresh rows only when the
+  qualify count or blocker mix actually changes. Decision rows never coalesce.
+- **COPY TEXT** button on the ACTIVITY panel + 24h log retention.
+- Betting logic is otherwise the v98 profile, unchanged.
 
 ## What v98 fixes
 

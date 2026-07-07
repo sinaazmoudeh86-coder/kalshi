@@ -62,6 +62,15 @@ async function kalshi(method, path, body) {
     try { r = await kalshiAt(base, method, path, body); }
     catch (e) { r = { status: 0, json: { error: String((e && e.message) || e) }, base }; }
     if (r.status >= 200 && r.status < 300) { goodBase = base; return r; }
+    // intermittent Kalshi 401s (Jul 7: two "cancel failed (kalshi 401)" on an
+    // otherwise-working key) are clock-skew / transient auth: re-sign with a
+    // fresh timestamp and retry once. Same client_order_id, so no dupe risk.
+    if (r.status === 401) {
+      await new Promise(rs => setTimeout(rs, 300));
+      try { r = await kalshiAt(base, method, path, body); }
+      catch (e) { r = { status: 0, json: { error: String((e && e.message) || e) }, base }; }
+      if (r.status >= 200 && r.status < 300) { goodBase = base; return r; }
+    }
     last = r;
     // auth/param errors are the same everywhere — don't retry those on other hosts
     if (!endpointLevelError(r)) return r;
@@ -137,7 +146,7 @@ module.exports = async (req, res) => {
       return res.status(200).json({
         fills: f.list, settlements: s.list, positions: p.list,
         errors: [f.err, s.err, p.err].filter(Boolean),
-        srv: 48
+        srv: 49
       });
     }
     if (req.method === "GET") {
@@ -148,7 +157,7 @@ module.exports = async (req, res) => {
         return res.status(200).json({
           balance: cents(bj.balance, bj.balance_dollars),
           portfolio_value: cents(bj.portfolio_value, bj.portfolio_value_dollars),
-          via: bal.base, srv: 48
+          via: bal.base, srv: 49
         });
       }
       const msg = (bal.json && ((bal.json.error && bal.json.error.message) || bal.json.message || bal.json.error)) || ("kalshi " + bal.status);

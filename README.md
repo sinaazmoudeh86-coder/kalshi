@@ -1,13 +1,15 @@
-# Kalshi Live Desk — DEPLOYMENT (BUILD v107 · LIVE-ONLY · Kalshi-only, sub-1h hunter)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v110 · $40 STAKE + SMARTER PLACEMENT · Kalshi-only, sub-1h hunter)
 
-3 files + this README. The repo root must look exactly like this:
+4 files + this README. The repo root must look exactly like this:
 
 ```
-index.html      <- the dashboard (header must say BUILD v94 after deploy)
+index.html      <- the dashboard (header must say BUILD v110 after deploy)
 vercel.json     <- proxies /api/kalshi/* to Kalshi's market-data API + feed budget
 api/
   trade.js      <- signed order placement + portfolio sync (needs env vars)
   feed.js       <- server-side market sweep: browser makes 1 request, not ~80 (no env vars)
+  spot.js       <- NEW v109: external data sweep — crypto spot (Kraken/Coinbase),
+                   index quotes (Yahoo), NWS station observations (no env vars)
 ```
 
 ## Deploy steps
@@ -17,7 +19,62 @@ api/
    inside a folder named `api`.
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v107**.
+4. Check the header — it must say **BUILD v110**.
+
+## What v110 changes — Jul 7 log review: $40 stake + placement fixes
+
+- **Stake raised $25 → $40 per bet.** Contract sizing, the junk-payout floor
+  (now net payout ≥ $2.00, scaled 1.6×), the low-balance skip (< $41), and the
+  server cost cap ($30 → $45 in api/trade.js — REDEPLOY trade.js) all scale
+  with it. Score calibration is renormalized so gates behave identically.
+- **CHASE BUFFER**: last night 6+ entries died in "unfilled 1.5min → cancel →
+  retry takes the ask" cycles because the ask ticked 1¢ mid-flight. Taker
+  limits now sit 1¢ ABOVE the ask — a marketable limit still fills AT the ask;
+  the extra cent is only a cap. Contracts are sized at the limit so worst-case
+  cost stays ≤ $40.
+- **RE-PRICE window**: 8 entries died as SLIPPAGE ABORT; several were 4–6¢
+  drifts still inside the win-odds band with a real payout. Those now re-score
+  at the live book (logged as RE-PRICED) instead of voiding. Drifts >6¢,
+  out-of-band prices, or junk payouts still abort exactly as before — the
+  $62,700-loss guard is untouched.
+
+## What v109 adds — EXTERNAL DATA: the desk stops trusting Kalshi's book about itself
+
+New serverless function **api/spot.js** (no env vars) sweeps three independent
+sources; the dashboard polls it every 20s (browser-direct Kraken/Coinbase/NWS
+fallback if the fn isn't deployed — index quotes need the fn):
+
+- **CUSHION gate (10th)** — crypto/index strikes are verified against LIVE spot:
+  distance to strike must be ≥ 1σ at the settle horizon (realized 10-min vol,
+  √t-scaled), and the spot model may not underprice the side by >8%. Fails open
+  when no feed/strike — tape-only, exactly v108 behavior.
+- **BLACKOUT gate (11th)** — no crypto/index/econ entry whose hold window
+  contains a CPI (8:30 ET), FOMC (2pm ET) or jobs (first-Friday 8:30 ET) print.
+- **SPOT ABORT** — at execution the strike cushion is re-verified against live
+  spot (independent of Kalshi's book): z < 0.3σ = no order, void, cool-off.
+  This would have caught the v95 $62,700 stale-quote loss on its own.
+- **Weather OBSERVED-LOCK** — NWS observations decide the post-peak lane: outcome
+  already printed past the strike = credit / dead side blocked; extreme within
+  1.5° of the strike = knife-edge, both sides blocked; betting on a late cross
+  after the diurnal turn = blocked.
+- **CUSHION LEARNING** — every entry records its σ-band; if a band's settled
+  record shows favorites not winning at favorite rates, the z floor rises
+  (1σ → 1.5σ → 2.5σ) automatically.
+- **EXTERNAL FEEDS panel** — live spot rows with sparklines + realized σ, NWS
+  observed hi/lo per station, macro calendar with countdown, learning record.
+- **Self-test suite** — open the dashboard with `?selftest=1` to run ~25 checks
+  of every new code path (strike parsing, σ math, cushion signs, NWS extremes,
+  blackout windows, learning) on synthetic data, rendered as a panel.
+
+## What v108 adds — account-API errors surface in the log
+
+- If ARM succeeds but the account API fails (wrong TRADE_SECRET, missing
+  KALSHI_ACCESS_KEY / KALSHI_PRIVATE_KEY on a fresh Vercel project, Kalshi
+  auth rejection), the activity log now shows a red **ACCOUNT API FAILING /
+  POSITION SYNC FAILED** row with the server's exact error — instead of
+  silently holding entries forever.
+- **New Vercel project = env vars start EMPTY.** If you deploy to a new
+  project (new URL), re-add all env vars there and Redeploy.
 
 ## What v107 changes — LIVE-ONLY build (paper mode removed)
 
@@ -346,7 +403,8 @@ Env changes require a Redeploy (Deployments → ⋯ → Redeploy).
 - Site password: `20042004`
 - ARM: LIVE TRADING panel → ARM → enter your TRADE_SECRET.
   Balance appearing = the whole chain works.
-- Armed: every signal clearing all 8 gates places a real $25 limit order.
+- Armed: every signal clearing all gates places a real $40 limit order
+  (limit 1¢ above the ask as a fill buffer).
   Resting orders are re-audited every sweep and canceled if the thesis breaks,
   the price runs away, or 10 min pass unfilled.
 - Log reconciles against real Kalshi fills, settlements & positions every 30s.
@@ -356,7 +414,7 @@ Env changes require a Redeploy (Deployments → ⋯ → Redeploy).
   betting moment; COPY exports the full report for review.
 - Learning module: calibration extra edge, category/band adjust, 2h cooldown
   after 3 straight category losses, 1h circuit breaker after 5 straight.
-- Safety: −$500/day auto-halt, $30/order server cap, ■ STOP LIVE disarms
+- Safety: −$500/day auto-halt, $45/order server cap, ■ STOP LIVE disarms
   instantly, `TRADING_HALTED=true` kills orders server-side.
 - **The desk only scans/trades while a browser tab is open.** Keep the tab open
   (it takes a screen wake-lock while armed).

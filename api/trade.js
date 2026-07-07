@@ -170,8 +170,8 @@ module.exports = async (req, res) => {
       if (!ticker || (side !== "yes" && side !== "no") || !(count >= 1) || !(price >= 1 && price <= 99)) {
         return res.status(400).json({ error: "bad order params" });
       }
-      if (count * price > 4500) {
-        return res.status(400).json({ error: "order exceeds $45 cost cap" });
+      if (count * price > 3000) {
+        return res.status(400).json({ error: "order exceeds $30 cost cap" });
       }
       // Kalshi V2 order shape (May 2026): single-book YES-side quoting, fixed-point dollars.
       // buy YES = bid at yes price; buy NO = ask (sell YES) at 1 - no price.

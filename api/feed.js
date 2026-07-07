@@ -100,8 +100,7 @@ function shape(raw, evMap) {
     seen[m.ticker] = 1;
     if (m.status && m.status !== "active") return;
     if (m.mve_collection_ticker || (m.ticker || "").includes("KXMVE") || (m.event_ticker || "").includes("KXMVE")) return;
-    // weather RE-ENABLED (v104): the desk's post-peak weather lane was starved —
-    // this feed still filtered KXHIGH/KXLOW/KXTEMP even after the desk allowed them
+    if (/KXHIGH|KXLOW|KXTEMP/i.test(m.ticker || "")) return; // weather disabled by desk policy
     const bid = cents(m.yes_bid, m.yes_bid_dollars);
     const ask = cents(m.yes_ask, m.yes_ask_dollars) || 100;
     const last = cents(m.last_price, m.last_price_dollars);
@@ -109,7 +108,8 @@ function shape(raw, evMap) {
     const closeTs = new Date(m.close_time).getTime();
     const vol = num(m.volume_24h) || num(m.volume_24h_fp) || num(m.volume) || num(m.volume_fp) || num(m.liquidity_dollars);
     const c = kalshiCat(evMap[m.event_ticker], m.ticker, m.title);
-    if (!(yes >= 5 && yes <= 96)) return;
+    if (c === "WEATHER") return;
+    if (!(yes >= 5 && yes <= 95)) return;
     if (!(closeTs - nowT > 4 * 60000 && closeTs - nowT < winMs)) return;
     out.push({
       t: (m.title || m.ticker) + (m.yes_sub_title && m.yes_sub_title.length < 60 ? " \u2014 " + m.yes_sub_title : ""),
@@ -164,10 +164,9 @@ async function sweep() {
   }
   diag.push("ladder " + counts.join(" "));
 
-  // FAST-SERIES LANE: the desk's core supply — 15-min/hourly/daily crypto, index
-  // dailies AND hourlies, plus weather-station dailies for the post-peak lane —
-  // probed DIRECTLY every call (no pagination risk; a missing series fails silently)
-  const fastSeries = ["KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M", "KXDOGE15M", "KXBTC", "KXETH", "KXSOL", "KXXRP", "KXBTCD", "KXETHD", "KXSOLD", "KXXRPD", "KXDOGED", "KXINXD", "KXNASDAQ100D", "KXINXU", "KXNASDAQ100U", "KXHIGHNY", "KXHIGHCHI", "KXHIGHMIA", "KXHIGHAUS", "KXHIGHDEN", "KXHIGHLAX", "KXHIGHPHIL", "KXLOWNY"];
+  // FAST-SERIES LANE: the desk's core supply — 15-min/hourly/daily crypto + index
+  // dailies — probed DIRECTLY every call (no pagination risk, ~16 cheap requests)
+  const fastSeries = ["KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M", "KXDOGE15M", "KXBTC", "KXETH", "KXSOL", "KXXRP", "KXBTCD", "KXETHD", "KXSOLD", "KXXRPD", "KXDOGED", "KXINXD", "KXNASDAQ100D"];
   for (const s of fastSeries) {
     if (Date.now() - t0 > 50000) break;
     try {

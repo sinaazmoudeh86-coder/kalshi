@@ -1,15 +1,13 @@
-# Kalshi Live Desk — DEPLOYMENT (BUILD v110 · $40 STAKE + SMARTER PLACEMENT · Kalshi-only, sub-1h hunter)
+# Kalshi Live Desk — DEPLOYMENT (BUILD v98 · Kalshi-only, sub-1h hunter)
 
-4 files + this README. The repo root must look exactly like this:
+3 files + this README. The repo root must look exactly like this:
 
 ```
-index.html      <- the dashboard (header must say BUILD v110 after deploy)
+index.html      <- the dashboard (header must say BUILD v94 after deploy)
 vercel.json     <- proxies /api/kalshi/* to Kalshi's market-data API + feed budget
 api/
   trade.js      <- signed order placement + portfolio sync (needs env vars)
   feed.js       <- server-side market sweep: browser makes 1 request, not ~80 (no env vars)
-  spot.js       <- NEW v109: external data sweep — crypto spot (Kraken/Coinbase),
-                   index quotes (Yahoo), NWS station observations (no env vars)
 ```
 
 ## Deploy steps
@@ -19,141 +17,7 @@ api/
    inside a folder named `api`.
 2. Vercel auto-deploys on commit. Wait for "Ready".
 3. **Hard refresh** the site: Cmd+Shift+R (Mac) / Ctrl+Shift+R (Windows).
-4. Check the header — it must say **BUILD v110**.
-
-## What v110 changes — Jul 7 log review: $40 stake + placement fixes
-
-- **Stake raised $25 → $40 per bet.** Contract sizing, the junk-payout floor
-  (now net payout ≥ $2.00, scaled 1.6×), the low-balance skip (< $41), and the
-  server cost cap ($30 → $45 in api/trade.js — REDEPLOY trade.js) all scale
-  with it. Score calibration is renormalized so gates behave identically.
-- **CHASE BUFFER**: last night 6+ entries died in "unfilled 1.5min → cancel →
-  retry takes the ask" cycles because the ask ticked 1¢ mid-flight. Taker
-  limits now sit 1¢ ABOVE the ask — a marketable limit still fills AT the ask;
-  the extra cent is only a cap. Contracts are sized at the limit so worst-case
-  cost stays ≤ $40.
-- **RE-PRICE window**: 8 entries died as SLIPPAGE ABORT; several were 4–6¢
-  drifts still inside the win-odds band with a real payout. Those now re-score
-  at the live book (logged as RE-PRICED) instead of voiding. Drifts >6¢,
-  out-of-band prices, or junk payouts still abort exactly as before — the
-  $62,700-loss guard is untouched.
-
-## What v109 adds — EXTERNAL DATA: the desk stops trusting Kalshi's book about itself
-
-New serverless function **api/spot.js** (no env vars) sweeps three independent
-sources; the dashboard polls it every 20s (browser-direct Kraken/Coinbase/NWS
-fallback if the fn isn't deployed — index quotes need the fn):
-
-- **CUSHION gate (10th)** — crypto/index strikes are verified against LIVE spot:
-  distance to strike must be ≥ 1σ at the settle horizon (realized 10-min vol,
-  √t-scaled), and the spot model may not underprice the side by >8%. Fails open
-  when no feed/strike — tape-only, exactly v108 behavior.
-- **BLACKOUT gate (11th)** — no crypto/index/econ entry whose hold window
-  contains a CPI (8:30 ET), FOMC (2pm ET) or jobs (first-Friday 8:30 ET) print.
-- **SPOT ABORT** — at execution the strike cushion is re-verified against live
-  spot (independent of Kalshi's book): z < 0.3σ = no order, void, cool-off.
-  This would have caught the v95 $62,700 stale-quote loss on its own.
-- **Weather OBSERVED-LOCK** — NWS observations decide the post-peak lane: outcome
-  already printed past the strike = credit / dead side blocked; extreme within
-  1.5° of the strike = knife-edge, both sides blocked; betting on a late cross
-  after the diurnal turn = blocked.
-- **CUSHION LEARNING** — every entry records its σ-band; if a band's settled
-  record shows favorites not winning at favorite rates, the z floor rises
-  (1σ → 1.5σ → 2.5σ) automatically.
-- **EXTERNAL FEEDS panel** — live spot rows with sparklines + realized σ, NWS
-  observed hi/lo per station, macro calendar with countdown, learning record.
-- **Self-test suite** — open the dashboard with `?selftest=1` to run ~25 checks
-  of every new code path (strike parsing, σ math, cushion signs, NWS extremes,
-  blackout windows, learning) on synthetic data, rendered as a panel.
-
-## What v108 adds — account-API errors surface in the log
-
-- If ARM succeeds but the account API fails (wrong TRADE_SECRET, missing
-  KALSHI_ACCESS_KEY / KALSHI_PRIVATE_KEY on a fresh Vercel project, Kalshi
-  auth rejection), the activity log now shows a red **ACCOUNT API FAILING /
-  POSITION SYNC FAILED** row with the server's exact error — instead of
-  silently holding entries forever.
-- **New Vercel project = env vars start EMPTY.** If you deploy to a new
-  project (new URL), re-add all env vars there and Redeploy.
-
-## What v107 changes — LIVE-ONLY build (paper mode removed)
-
-- **No paper entries, ever.** Unarmed, the desk scans and logs "SIGNAL … not
-  armed, no order sent" but places nothing. Every position in the log is a real
-  Kalshi order. On first load, leftover OPEN paper positions from earlier builds
-  are voided automatically so they can't block real orders via exposure caps.
-- **Top bar / money flow pull the real account API only**: "—" until you ARM;
-  then strictly the atomic Kalshi ledger figures. Old paper samples in the
-  browser are excluded from the chart permanently.
-- ARM (trade secret) is still required before any order — that's the server
-  auth, not a paper/live toggle.
-
-## What v105 changes
-
-- **Crypto slot cap removed for high-prob entries**: if all 9 gates pass on a
-  ≥82¢ favorite, it places — no more "slots full 3/3, skipping". Sub-82¢
-  entries still cap at 1 concurrent crypto position, and the one-underlying
-  rule stands (two BTC strikes = one tape risk). Still max 3 new entries per
-  5s sweep and $25 per bet, so exposure ramps gradually, gate-checked each
-  step.
-
-## What v104 changes — review MORE bets
-
-- **Feed bug fixed**: api/feed.js was still filtering out ALL weather markets,
-  so the post-peak weather lane (enabled v97) never saw a single candidate.
-  Weather now flows through (price cap raised to 96¢ to match the weather band).
-- **Fast-series lane widened**: hourly S&P/Nasdaq series (KXINXU,
-  KXNASDAQ100U) and 8 weather-station dailies are probed directly every sweep
-  alongside crypto — these settle constantly and are exactly the desk's lane.
-- Reminder: more markets scored ≠ lower standards — all 9 gates still apply;
-  this just widens the funnel's mouth.
-
-## What v103 changes
-
-- **Sweep-on-fresh-quotes**: a sweep now fires the instant new quotes land
-  (hot lane / full refresh) instead of waiting up to 5s for the next tick.
-  Worst-case reaction time drops from ~20s to ~15s with zero extra API load.
-  (The 5s idle cadence stays — faster sweeping without fresh data just
-  re-scores the same numbers; the Kalshi API rate limit is the true ceiling.)
-
-## What v102 changes — 4:21 PM log review
-
-- **AUTO HORIZON hysteresis**: the entry window flapped 12h→4h→1h within 5
-  minutes, re-scoring the whole pool on each flip. A switch now requires its
-  condition to hold ~90s and 3 min since the last switch (an EMPTY window
-  still widens immediately so startup stays fast).
-- **Smarter log coalescing**: repeated rows (sweep summaries, hot lane,
-  "already exposed — skipping…") now merge even when other rows interleave —
-  the same skip message printed 6× in 30s.
-- (v101's ACTIVE-only REVERSAL rule is included — the 3h-old settled-bet
-  blocks in this log are gone once deployed.)
-
-## What v101 changes
-
-- **REVERSAL gate narrowed**: only blocks when an ACTIVE (open, unsettled)
-  opposite-direction bet exists on the same underlying — holding both sides
-  guarantees one loses. Settled/expired bets no longer block for 6h; the 4:07 PM
-  log showed a 92¢ BTC entry blocked by a YES from 3 hours earlier that had
-  already settled.
-
-## What v100 changes
-
-- **Activity log retains 24 hours** (was last 50 rows) on both the dashboard
-  and the server engine (5000-row safety cap).
-- **COPY TEXT button** in the Activity header — copies the whole 24h log as
-  plain text (timestamped rows) for pasting into chat.
-
-## What v99 fixes — Jul 6 tape review
-
-- **Junk-payout filter**: net payout must be ≥ $1.25. Kills the 98–99¢ entries
-  that risked $25 to win $0.01–$0.47 after fees; the final-10-min high-band
-  exception now caps at 96¢ (was 98¢).
-- **No-fill churn guard**: one immediate retry allowed; after two voided
-  attempts a market goes quiet for 30 min (BNB/gold/Shiba were re-signaled
-  every 1–3 min, all NO FILL — wasted slots, log spam, duplicate rows).
-- **Fill audit**: if Kalshi fills more contracts than ordered (the −$49 weather
-  losses on a $25 stake = double fill) a loud FILL AUDIT event fires; a bet
-  that settles WON with negative P&L is flagged instead of hiding in the log.
+4. Check the header — it must say **BUILD v98**.
 
 ## What v98 fixes
 
@@ -403,8 +267,7 @@ Env changes require a Redeploy (Deployments → ⋯ → Redeploy).
 - Site password: `20042004`
 - ARM: LIVE TRADING panel → ARM → enter your TRADE_SECRET.
   Balance appearing = the whole chain works.
-- Armed: every signal clearing all gates places a real $40 limit order
-  (limit 1¢ above the ask as a fill buffer).
+- Armed: every signal clearing all 8 gates places a real $25 limit order.
   Resting orders are re-audited every sweep and canceled if the thesis breaks,
   the price runs away, or 10 min pass unfilled.
 - Log reconciles against real Kalshi fills, settlements & positions every 30s.
@@ -414,7 +277,7 @@ Env changes require a Redeploy (Deployments → ⋯ → Redeploy).
   betting moment; COPY exports the full report for review.
 - Learning module: calibration extra edge, category/band adjust, 2h cooldown
   after 3 straight category losses, 1h circuit breaker after 5 straight.
-- Safety: −$500/day auto-halt, $45/order server cap, ■ STOP LIVE disarms
+- Safety: −$500/day auto-halt, $30/order server cap, ■ STOP LIVE disarms
   instantly, `TRADING_HALTED=true` kills orders server-side.
 - **The desk only scans/trades while a browser tab is open.** Keep the tab open
   (it takes a screen wake-lock while armed).
